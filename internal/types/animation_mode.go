@@ -3,13 +3,13 @@ package types
 type AnimationMode int
 
 const (
-	ModeOnce     AnimationMode = iota
-	ModeLoop     AnimationMode = iota
-	ModePingPong AnimationMode = iota
+	AnimationModeOnce     AnimationMode = iota
+	AnimationModeLoop     AnimationMode = iota
+	AnimationModePingPong AnimationMode = iota
 )
 
 var animationModeToString = [...]string{
-	ModeOnce:     "once",
-	ModeLoop:     "loop",
-	ModePingPong: "pingpong",
+	AnimationModeOnce:     "once",
+	AnimationModeLoop:     "loop",
+	AnimationModePingPong: "pingpong",
 }

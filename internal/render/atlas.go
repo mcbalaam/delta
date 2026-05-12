@@ -22,19 +22,15 @@ type AtlasMeta struct {
 	States []parse.IconStateMeta
 }
 
-// AtlasManager caches IconState objects and provides loading utilities when requested
 type AtlasManager struct {
 	mu             sync.RWMutex
 	IconStateCache map[string]IconState
 }
 
-// DefaultManager is the package-level manager consumers can use
 var DefaultManager = &AtlasManager{
 	IconStateCache: map[string]IconState{},
 }
 
-// CacheIconStates scans a directory for *.json (Aseprite) and matching *.png with the same name,
-// cuts atlases and stores resulting IconState entries in the manager's cache
 func (m *AtlasManager) CacheIconStates(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -137,9 +133,9 @@ func (m *AtlasManager) CutAtlas(r io.Reader, meta AtlasMeta) ([]IconState, error
 			}
 			sub := subImg.SubImage(rect)
 
-			eimg := ebiten.NewImageFromImage(sub)
+			eimg := *ebiten.NewImageFromImage(sub)
 			frm := Frame{
-				Image: *eimg,
+				Image: &eimg,
 				Time:  time.Duration(fm.DurationMS) * time.Millisecond,
 			}
 			frames = append(frames, frm)
@@ -149,13 +145,13 @@ func (m *AtlasManager) CutAtlas(r io.Reader, meta AtlasMeta) ([]IconState, error
 		var mode types.AnimationMode
 		switch strings.ToLower(s.Mode) {
 		case "forward", "normal", "fwd":
-			mode = types.ModeOnce
+			mode = types.AnimationModeLoop
 		case "reverse", "backward", "rev":
-			mode = types.ModeLoop
+			mode = types.AnimationModeLoop
 		case "pingpong", "ping-pong":
-			mode = types.ModePingPong
+			mode = types.AnimationModePingPong
 		default:
-			mode = types.ModeOnce
+			mode = types.AnimationModeOnce
 		}
 
 		stateName := fmt.Sprintf("%s_%s", meta.Name, s.Name)
@@ -165,7 +161,7 @@ func (m *AtlasManager) CutAtlas(r io.Reader, meta AtlasMeta) ([]IconState, error
 			Mode:   mode,
 		}
 		if len(frames) > 0 {
-			iconState.CurrentFrame = frames[0]
+			iconState.CurrentFrame = 0
 		}
 
 		states = append(states, iconState)
@@ -181,7 +177,6 @@ func (m *AtlasManager) LoadIconState(key string) (IconState, error) {
 	}
 	atlasName := parts[0]
 
-	// expect directory sprites/<atlasName>
 	spritesDir := filepath.Join("sprites", atlasName)
 	jsonPath := filepath.Join(spritesDir, atlasName+".json")
 	pngPath := filepath.Join(spritesDir, atlasName+".png")
@@ -221,7 +216,6 @@ func (m *AtlasManager) LoadIconState(key string) (IconState, error) {
 	}
 	m.mu.Unlock()
 
-	// return requested state
 	st, err := m.GetIconState(key)
 	if err != nil {
 		return st, nil

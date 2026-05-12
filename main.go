@@ -1,59 +1,71 @@
 package main
 
 import (
-	_ "image/png"
 	"log"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+
+	"github.com/mcbalaam/delta/internal/render"
 )
 
-var img *ebiten.Image
+var icon *render.AnimatedIcon
+
+type Game struct {
+	last time.Time
+}
+
+var xPos, yPos float64 = 200, 200
 
 func init() {
 	var err error
-	img, _, err = ebitenutil.NewImageFromFile("gopher.png")
+	icon, err = render.NewAnimatedIconFromPath("media/sprites/baba", "baba_idle")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("%v", err)
 	}
 }
-
-type Game struct {
-	State string
-}
-
-var x float64 = 200
-var y float64 = 200
 
 func (g *Game) Update() error {
-	if ebiten.IsKeyPressed(ebiten.Key(ebiten.KeyRight)) {
-		x += 2
+	now := time.Now()
+	if g.last.IsZero() {
+		g.last = now
 	}
-	if ebiten.IsKeyPressed(ebiten.Key(ebiten.KeyLeft)) {
-		x -= 2
+	dt := now.Sub(g.last)
+	g.last = now
+
+	if ebiten.IsKeyPressed(ebiten.KeyRight) {
+		xPos += 2
 	}
-	if ebiten.IsKeyPressed(ebiten.Key(ebiten.KeyUp)) {
-		y -= 2
+	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
+		xPos -= 2
 	}
-	if ebiten.IsKeyPressed(ebiten.Key(ebiten.KeyDown)) {
-		y += 2
+	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+		yPos -= 2
 	}
+	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+		yPos += 2
+	}
+
+	if icon != nil {
+		icon.Update(dt)
+	}
+
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(x, y)
-	screen.DrawImage(img, op)
+	if icon != nil {
+		icon.Draw(screen, xPos, yPos)
+	}
 }
 
-func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return 640, 480
 }
 
 func main() {
 	ebiten.SetWindowSize(640, 480)
-	ebiten.SetWindowTitle("Render an image")
+	ebiten.SetWindowTitle("Animated Icon")
 	if err := ebiten.RunGame(&Game{}); err != nil {
 		log.Fatal(err)
 	}
