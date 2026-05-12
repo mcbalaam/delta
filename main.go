@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 
 	"github.com/mcbalaam/delta/internal/render"
 )
@@ -19,7 +20,7 @@ var xPos, yPos float64 = 200, 200
 
 func init() {
 	var err error
-	icon, err = render.NewAnimatedIconFromPath("media/sprites/baba", "baba_idle")
+	icon, err = render.NewAnimatedIconFromPath("media/sprites/baba", "baba_right")
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -34,9 +35,11 @@ func (g *Game) Update() error {
 	g.last = now
 
 	if ebiten.IsKeyPressed(ebiten.KeyRight) {
+		icon.SetIconState("baba_right")
 		xPos += 2
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
+		icon.SetIconState("baba_left")
 		xPos -= 2
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
@@ -55,8 +58,9 @@ func (g *Game) Update() error {
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	if icon != nil {
-		icon.Draw(screen, xPos, yPos)
+		icon.Draw(screen, xPos, yPos, 2, 2, 0)
 	}
+	ebitenutil.DebugPrint(screen, icon.CurrentState.Name)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {

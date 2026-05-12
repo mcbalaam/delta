@@ -33,21 +33,25 @@ func NewAnimatedIconFromPath(path string, stateKey string) (*AnimatedIcon, error
 		return nil, fmt.Errorf("cache icon states: %w", err)
 	}
 
-	st, err := DefaultManager.GetIconState(stateKey)
-	if err != nil {
-		return nil, fmt.Errorf("get icon state %q: %w", stateKey, err)
+	iconStates := make(map[string]*IconState)
+	DefaultManager.mu.RLock()
+	for k, v := range DefaultManager.IconStateCache {
+		st := v
+		iconStates[k] = &st
+	}
+	DefaultManager.mu.RUnlock()
+
+	initial, ok := iconStates[stateKey]
+	if !ok {
+		return nil, fmt.Errorf("get icon state %q: not found", stateKey)
 	}
 
-	st.CurrentFrame = 0
-	st.elapsed = 0
-	st.dir = 1
-
-	iconStates := map[string]*IconState{
-		st.Name: &st,
-	}
+	initial.CurrentFrame = 0
+	initial.elapsed = 0
+	initial.dir = 1
 
 	return &AnimatedIcon{
-		CurrentState: &st,
+		CurrentState: initial,
 		IconStates:   iconStates,
 	}, nil
 }
@@ -98,7 +102,7 @@ func (a *AnimatedIcon) Update(dt time.Duration) {
 	}
 }
 
-func (a *AnimatedIcon) Draw(screen *ebiten.Image, x, y float64) {
+func (a *AnimatedIcon) Draw(screen *ebiten.Image, x, y, scaleX, scaleY, tilt float64) {
 	s := a.CurrentState
 	if s == nil || len(s.Frames) == 0 {
 		return
@@ -109,6 +113,8 @@ func (a *AnimatedIcon) Draw(screen *ebiten.Image, x, y float64) {
 	}
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(x, y)
+	op.GeoM.Scale(scaleX, scaleY)
+	op.GeoM.Rotate(tilt)
 	screen.DrawImage(frame.Image, op)
 }
 
@@ -118,9 +124,14 @@ func (a *AnimatedIcon) SetIconState(state string) error {
 		return fmt.Errorf("state %q not found", state)
 	}
 
+	if a.CurrentState == ns {
+		return nil
+	}
+
 	ns.CurrentFrame = 0
 	ns.elapsed = 0
 	ns.dir = 1
 	a.CurrentState = ns
+
 	return nil
 }
