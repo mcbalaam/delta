@@ -15,12 +15,14 @@ type Frame struct {
 }
 
 type IconState struct {
-	Name         string
-	CurrentFrame int
-	Frames       []Frame
-	Mode         types.AnimationMode
-	dir          int // +1 or -1
-	elapsed      time.Duration
+	Name            string
+	CurrentFrame    int
+	CurrentFrameRef *Frame
+	Frames          []Frame
+	Mode            types.AnimationMode
+	dir             int
+	elapsed         time.Duration
+	Continuous      bool
 }
 
 type AnimatedIcon struct {
@@ -47,6 +49,7 @@ func NewAnimatedIconFromPath(path string, stateKey string) (*AnimatedIcon, error
 	}
 
 	initial.CurrentFrame = 0
+	initial.CurrentFrameRef = &initial.Frames[initial.CurrentFrame]
 	initial.elapsed = 0
 	initial.dir = 1
 
@@ -61,6 +64,7 @@ func (a *AnimatedIcon) Update(dt time.Duration) {
 	if s == nil || len(s.Frames) == 0 {
 		return
 	}
+
 	s.elapsed += dt
 	if s.CurrentFrame < 0 {
 		s.CurrentFrame = 0
@@ -99,6 +103,7 @@ func (a *AnimatedIcon) Update(dt time.Duration) {
 				s.CurrentFrame = 0
 			}
 		}
+		s.CurrentFrameRef = &s.Frames[s.CurrentFrame]
 	}
 }
 
@@ -112,8 +117,8 @@ func (a *AnimatedIcon) Draw(screen *ebiten.Image, x, y, scaleX, scaleY, tilt flo
 		return
 	}
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(x, y)
 	op.GeoM.Scale(scaleX, scaleY)
+	op.GeoM.Translate(x, y)
 	op.GeoM.Rotate(tilt)
 	screen.DrawImage(frame.Image, op)
 }
@@ -129,7 +134,10 @@ func (a *AnimatedIcon) SetIconState(state string) error {
 	}
 
 	ns.CurrentFrame = 0
-	ns.elapsed = 0
+	ns.CurrentFrameRef = &ns.Frames[ns.CurrentFrame]
+	if !ns.Continuous {
+		ns.elapsed = 0
+	}
 	ns.dir = 1
 	a.CurrentState = ns
 
