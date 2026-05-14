@@ -118,27 +118,28 @@ func NewRigidObject(posx, posy, velx, vely, scalex, scaley, rotation float64, ic
 		Object: *NewObject(posx, posy, velx, vely, scalex, scaley, rotation, icon),
 		Hitbox: &Hitbox{
 			LocalVerts: []Vec{
-				{-halfW + xoffset, -halfH + yoffset},
-				{halfW + xoffset, -halfH + yoffset},
-				{halfW + xoffset, halfH + yoffset},
-				{-halfW + xoffset, halfH + yoffset},
+				{-halfW, -halfH},
+				{halfW, -halfH},
+				{halfW, halfH},
+				{-halfW, halfH},
 			},
 			WorldVerts: make([]Vec, 4),
 			Width:      width,
 			Height:     height,
-			OffsetX:    0,
-			OffsetY:    0,
+			OffsetX:    xoffset,
+			OffsetY:    yoffset,
 			Rotation:   0,
 		},
 	}
 	obj.UpdateHitbox()
+	DefaultQueue.Schedule(obj)
+	DefaultUpdateQueue.Schedule(obj)
 	return obj
 }
 
 func (obj *RigidObject) SetHitboxOffset(ox, oy float64) {
 	obj.Hitbox.OffsetX = ox
 	obj.Hitbox.OffsetY = oy
-	obj.UpdateHitbox()
 }
 
 func (obj *RigidObject) CenterHitbox() {
@@ -149,10 +150,21 @@ func (obj *RigidObject) CenterHitbox() {
 }
 
 func (r *RigidObject) Draw(s *ebiten.Image) {
-	adjustedX := r.PosX - (r.Hitbox.Width * r.ScaleX / 2)
-	adjustedY := r.PosY - (r.Hitbox.Height * r.ScaleY / 2)
+	offsetVec := Vec{r.Hitbox.OffsetX, r.Hitbox.OffsetY}
+	transformedOffset := transformPoint(
+		offsetVec,
+		r.ScaleX, r.ScaleY,
+		r.Rotation,
+		0, 0,
+	)
 
-	r.Icon.Draw(s, adjustedX, adjustedY, r.ScaleX, r.ScaleY, r.Rotation)
+	centerX := r.PosX - (r.Hitbox.Width * r.ScaleX / 2)
+	centerY := r.PosY - (r.Hitbox.Height * r.ScaleY / 2)
+
+	iconX := centerX + transformedOffset.X
+	iconY := centerY + transformedOffset.Y
+
+	r.Icon.Draw(s, iconX, iconY, r.ScaleX, r.ScaleY, r.Rotation)
 	r.DrawHitboxDebug(s)
 }
 
@@ -166,8 +178,8 @@ func (r *RigidObject) UpdateHitbox() {
 			localVert,
 			r.ScaleX, r.ScaleY,
 			r.Rotation,
-			r.PosX+r.Hitbox.OffsetX,
-			r.PosY+r.Hitbox.OffsetY,
+			r.PosX,
+			r.PosY,
 		)
 	}
 }

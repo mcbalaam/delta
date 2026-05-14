@@ -19,7 +19,7 @@
         "w": 24,
         "h": 24
       },
-      "duration": 300
+      "duration": 200
     },
     "baba 1.aseprite": {
       "frame": {
@@ -40,7 +40,7 @@
         "w": 24,
         "h": 24
       },
-      "duration": 300
+      "duration": 200
     },
     "baba 2.aseprite": {
       "frame": {
@@ -61,7 +61,7 @@
         "w": 24,
         "h": 24
       },
-      "duration": 300
+      "duration": 200
     },
     "baba 3.aseprite": {
       "frame": {
@@ -82,7 +82,7 @@
         "w": 24,
         "h": 24
       },
-      "duration": 300
+      "duration": 200
     },
     "baba 4.aseprite": {
       "frame": {
@@ -103,7 +103,7 @@
         "w": 24,
         "h": 24
       },
-      "duration": 300
+      "duration": 200
     },
     "baba 5.aseprite": {
       "frame": {
@@ -124,7 +124,7 @@
         "w": 24,
         "h": 24
       },
-      "duration": 300
+      "duration": 200
     }
   },
   "meta": {

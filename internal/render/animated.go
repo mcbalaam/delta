@@ -118,8 +118,8 @@ func (a *AnimatedIcon) Draw(screen *ebiten.Image, x, y, scaleX, scaleY, tilt flo
 	}
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(scaleX, scaleY)
-	op.GeoM.Translate(x, y)
 	op.GeoM.Rotate(tilt)
+	op.GeoM.Translate(x, y)
 	screen.DrawImage(frame.Image, op)
 }
 

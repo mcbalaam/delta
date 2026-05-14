@@ -41,8 +41,5 @@ func NewObject(posx, posy, velx, vely, scalex, scaley, rotation float64, icon re
 		Icon:     icon,
 	}
 
-	DefaultQueue.Schedule(object)
-	DefaultUpdateQueue.Schedule(object)
-
 	return object
 }

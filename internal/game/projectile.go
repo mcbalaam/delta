@@ -17,12 +17,15 @@ type Projectile struct {
 }
 
 func NewProjectile(posx, posy, velx, vely, scalex, scaley, rotation float64, icon render.AnimatedIcon, width, height, xoffset, yoffset, damage float64, fragile bool, lifetime time.Duration) *Projectile {
-	return &Projectile{
+	proj := &Projectile{
 		RigidObject: *engine.NewRigidObject(posx, posy, velx, vely, scalex, scaley, rotation, icon, width, height, xoffset, yoffset),
 		Damage:      damage,
 		Fragile:     fragile,
 		Lifetime:    lifetime,
 	}
+	engine.DefaultQueue.Schedule(proj)
+	engine.DefaultUpdateQueue.Schedule(proj)
+	return proj
 }
 
 func (p *Projectile) Update(dt time.Duration) {

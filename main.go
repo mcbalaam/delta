@@ -23,8 +23,6 @@ func init() {
 	var err error
 	icon, err := render.NewAnimatedIconFromPath("media/sprites/baba", "baba_left")
 	baba = engine.NewRigidObject(200, 200, 0, 0, 2, 2, 0, *icon, 24, 24, 0, 0)
-	engine.DefaultQueue.Schedule(baba)
-	engine.DefaultUpdateQueue.Schedule(baba)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -60,8 +58,7 @@ func (g *Game) Update() error {
 		if err != nil {
 			log.Fatalf("%v", err)
 		}
-		projectile = game.NewProjectile(400, 400, 20, 20, 1, 1, 0, *icon, 20, 20, 6, 6, 20, true, time.Duration(2222))
-		engine.DefaultQueue.Schedule(projectile)
+		projectile = game.NewProjectile(400, 400, 180, 180, 2, 2, 45, *icon, 10, 10, -10, -18, 20, true, time.Duration(2222))
 		systems.MasterSignalBus.Subscribe("collision", projectile, func(signal systems.Signal) {
 			println("collision detected")
 		})
