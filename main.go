@@ -8,7 +8,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 
 	"github.com/mcbalaam/delta/internal/engine"
+	"github.com/mcbalaam/delta/internal/game"
 	"github.com/mcbalaam/delta/internal/render"
+	"github.com/mcbalaam/delta/internal/systems"
 )
 
 type Game struct {
@@ -20,7 +22,9 @@ var baba *engine.RigidObject
 func init() {
 	var err error
 	icon, err := render.NewAnimatedIconFromPath("media/sprites/baba", "baba_left")
-	baba = engine.NewRigidObject(200, 200, 12, 12, 6, 6, *icon)
+	baba = engine.NewRigidObject(200, 200, 0, 0, 2, 2, 0, *icon, 24, 24, 0, 0)
+	engine.DefaultQueue.Schedule(baba)
+	engine.DefaultUpdateQueue.Schedule(baba)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -49,24 +53,37 @@ func (g *Game) Update() error {
 		baba.PosY += 2
 	}
 
-	baba.Update(dt)
+	var projectile *game.Projectile
+
+	if ebiten.IsKeyPressed(ebiten.KeySpace) {
+		icon, err := render.NewAnimatedIconFromPath("media/sprites/attack", "attack_idle")
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+		projectile = game.NewProjectile(400, 400, 20, 20, 1, 1, 0, *icon, 20, 20, 6, 6, 20, true, time.Duration(2222))
+		engine.DefaultQueue.Schedule(projectile)
+		systems.MasterSignalBus.Subscribe("collision", projectile, func(signal systems.Signal) {
+			println("collision detected")
+		})
+	}
+
+	engine.DefaultUpdateQueue.Execute(dt)
 
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	baba.Draw(screen)
-	baba.DrawHitboxDebug(screen)
+	engine.DefaultQueue.Execute(screen)
 	ebitenutil.DebugPrint(screen, baba.Icon.CurrentState.Name)
 	ebitenutil.DebugPrint(screen, "\nhitboxes shown")
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return 640, 480
+	return 1280, 960
 }
 
 func main() {
-	ebiten.SetWindowSize(640, 480)
+	ebiten.SetWindowSize(1280, 960)
 	ebiten.SetWindowTitle("Animated Icon")
 	if err := ebiten.RunGame(&Game{}); err != nil {
 		log.Fatal(err)

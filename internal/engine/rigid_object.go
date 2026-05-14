@@ -110,19 +110,12 @@ func (r *RigidObject) DrawHitboxDebug(s *ebiten.Image) {
 	}
 }
 
-func NewRigidObject(x, y, width, height, xoffset, yoffset float64, icon render.AnimatedIcon) *RigidObject {
+func NewRigidObject(posx, posy, velx, vely, scalex, scaley, rotation float64, icon render.AnimatedIcon, width, height, xoffset, yoffset float64) *RigidObject {
 	halfW := width / 2
 	halfH := height / 2
 
 	obj := &RigidObject{
-		Object: Object{
-			PosX:     x,
-			PosY:     y,
-			Rotation: 0,
-			Icon:     icon,
-			ScaleX:   2.0,
-			ScaleY:   2.0,
-		},
+		Object: *NewObject(posx, posy, velx, vely, scalex, scaley, rotation, icon),
 		Hitbox: &Hitbox{
 			LocalVerts: []Vec{
 				{-halfW + xoffset, -halfH + yoffset},
@@ -160,6 +153,7 @@ func (r *RigidObject) Draw(s *ebiten.Image) {
 	adjustedY := r.PosY - (r.Hitbox.Height * r.ScaleY / 2)
 
 	r.Icon.Draw(s, adjustedX, adjustedY, r.ScaleX, r.ScaleY, r.Rotation)
+	r.DrawHitboxDebug(s)
 }
 
 func (r *RigidObject) UpdateHitbox() {
@@ -168,10 +162,13 @@ func (r *RigidObject) UpdateHitbox() {
 	}
 
 	for i, localVert := range r.Hitbox.LocalVerts {
-		r.Hitbox.WorldVerts[i] = Vec{
-			X: r.PosX + localVert.X*r.ScaleX + r.Hitbox.OffsetX,
-			Y: r.PosY + localVert.Y*r.ScaleY + r.Hitbox.OffsetY,
-		}
+		r.Hitbox.WorldVerts[i] = transformPoint(
+			localVert,
+			r.ScaleX, r.ScaleY,
+			r.Rotation,
+			r.PosX+r.Hitbox.OffsetX,
+			r.PosY+r.Hitbox.OffsetY,
+		)
 	}
 }
 
