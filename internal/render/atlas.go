@@ -12,14 +12,13 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/mcbalaam/delta/internal/parse"
-	"github.com/mcbalaam/delta/internal/types"
+	"github.com/mcbalaam/delta/internal/assets"
 )
 
 // AtlasMeta is a single atlas entity (png + aseprite-style JSON)
 type AtlasMeta struct {
 	Name   string
-	States []parse.IconStateMeta
+	States []assets.IconStateMeta
 }
 
 type AtlasManager struct {
@@ -60,7 +59,7 @@ func (m *AtlasManager) CacheIconStates(path string) error {
 			return err
 		}
 
-		statesMeta, err := parse.ParseAsepriteJSON(b)
+		statesMeta, err := assets.ParseAsepriteJSON(b)
 		if err != nil {
 			return fmt.Errorf("parsing %s: %w", jsonPath, err)
 		}
@@ -141,22 +140,21 @@ func (m *AtlasManager) CutAtlas(r io.Reader, meta AtlasMeta) ([]IconState, error
 			frames = append(frames, frm)
 		}
 
-		// map parse.IconStateMeta.Mode (string) to types.AnimationMode
-		var mode types.AnimationMode
+		// map assets.IconStateMeta.Mode (string) to types.AnimationMode
+		var mode AnimationMode
 		switch strings.ToLower(s.Mode) {
 		case "forward", "normal", "fwd":
-			mode = types.AnimationModeLoop
+			mode = AnimationModeLoop
 		case "reverse", "backward", "rev":
-			mode = types.AnimationModeLoop
+			mode = AnimationModeLoop
 		case "pingpong", "ping-pong":
-			mode = types.AnimationModePingPong
+			mode = AnimationModePingPong
 		default:
-			mode = types.AnimationModeOnce
+			mode = AnimationModeOnce
 		}
 
-		stateName := fmt.Sprintf("%s_%s", meta.Name, s.Name)
 		iconState := IconState{
-			Name:   stateName,
+			Name:   s.Name,
 			Frames: frames,
 			Mode:   mode,
 		}
@@ -192,9 +190,9 @@ func (m *AtlasManager) LoadIconState(key string) (IconState, error) {
 	if err != nil {
 		return IconState{}, err
 	}
-	statesMeta, err := parse.ParseAsepriteJSON(b)
+	statesMeta, err := assets.ParseAsepriteJSON(b)
 	if err != nil {
-		return IconState{}, fmt.Errorf("parse json: %w", err)
+		return IconState{}, fmt.Errorf("assets json: %w", err)
 	}
 
 	f, err := os.Open(pngPath)

@@ -15,10 +15,13 @@ type Object struct {
 	Rotation float64
 	ScaleX   float64
 	ScaleY   float64
-	Icon     render.AnimatedIcon
+	Icon     *render.AnimatedIcon
 }
 
 func (o *Object) Draw(s *ebiten.Image) {
+	if o.Icon == nil {
+		return
+	}
 	o.Icon.Draw(s, o.PosX, o.PosY, o.ScaleX, o.ScaleY, o.Rotation)
 }
 
@@ -26,10 +29,12 @@ func (o *Object) Update(dt time.Duration) {
 	seconds := dt.Seconds()
 	o.PosX += o.VelX * seconds
 	o.PosY += o.VelY * seconds
-	o.Icon.Update(dt)
+	if o.Icon != nil {
+		o.Icon.Update(dt)
+	}
 }
 
-func NewObject(posx, posy, velx, vely, scalex, scaley, rotation float64, icon render.AnimatedIcon) *Object {
+func NewObject(posx, posy, velx, vely, scalex, scaley, rotation float64, icon *render.AnimatedIcon) *Object {
 	object := &Object{
 		PosX:     posx,
 		PosY:     posy,

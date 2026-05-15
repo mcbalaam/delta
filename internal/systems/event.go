@@ -5,6 +5,7 @@ type SignalInteractor interface{}
 type Signal struct {
 	Name    string
 	Emitent *SignalInteractor
+	Data    interface{}
 }
 
 type SignalHandler func(Signal)
@@ -29,10 +30,14 @@ func (b *SignalBus) Subscribe(name string, recepient SignalInteractor, handler S
 	})
 }
 
-func (b *SignalBus) Emit(name string, source SignalInteractor) {
+func (b *SignalBus) Emit(name string, source SignalInteractor, data ...interface{}) {
 	signal := Signal{
 		Name:    name,
 		Emitent: &source,
+	}
+
+	if len(data) > 0 {
+		signal.Data = data[0]
 	}
 
 	for _, sub := range b.Subscriptions {

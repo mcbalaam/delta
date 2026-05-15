@@ -1,4 +1,4 @@
-package parse
+package assets
 
 import (
 	"encoding/json"
@@ -92,7 +92,6 @@ func ParseAsepriteJSON(data []byte) ([]IconStateMeta, error) {
 
 	var states []IconStateMeta
 	for _, tag := range a.Meta.FrameTags {
-		// clamp indices
 		from := tag.From
 		to := tag.To
 		if from < 0 {

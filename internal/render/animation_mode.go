@@ -1,4 +1,4 @@
-package types
+package render
 
 type AnimationMode int
 

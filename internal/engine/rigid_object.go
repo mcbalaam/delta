@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/mcbalaam/delta/internal/render"
+	"github.com/mcbalaam/delta/internal/systems"
 )
 
 type Vec struct{ X, Y float64 }
@@ -110,7 +111,7 @@ func (r *RigidObject) DrawHitboxDebug(s *ebiten.Image) {
 	}
 }
 
-func NewRigidObject(posx, posy, velx, vely, scalex, scaley, rotation float64, icon render.AnimatedIcon, width, height, xoffset, yoffset float64) *RigidObject {
+func NewRigidObject(posx, posy, velx, vely, scalex, scaley, rotation float64, icon *render.AnimatedIcon, width, height, xoffset, yoffset float64) *RigidObject {
 	halfW := width / 2
 	halfH := height / 2
 
@@ -150,6 +151,10 @@ func (obj *RigidObject) CenterHitbox() {
 }
 
 func (r *RigidObject) Draw(s *ebiten.Image) {
+	if r.Icon == nil {
+		return // ← добавите эту проверку
+	}
+
 	offsetVec := Vec{r.Hitbox.OffsetX, r.Hitbox.OffsetY}
 	transformedOffset := transformPoint(
 		offsetVec,
@@ -250,4 +255,12 @@ func (obj *RigidObject) GetBounds() (minX, minY, maxX, maxY float64) {
 	}
 
 	return
+}
+
+func (obj *RigidObject) CheckCollisionsWithList(others []*RigidObject, signalName string) {
+	for _, other := range others {
+		if obj.CollidesWith(other) {
+			systems.MasterSignalBus.Emit(signalName, obj, other)
+		}
+	}
 }

@@ -16,7 +16,7 @@ type Projectile struct {
 	Lifetime time.Duration
 }
 
-func NewProjectile(posx, posy, velx, vely, scalex, scaley, rotation float64, icon render.AnimatedIcon, width, height, xoffset, yoffset, damage float64, fragile bool, lifetime time.Duration) *Projectile {
+func NewProjectile(posx, posy, velx, vely, scalex, scaley, rotation float64, icon *render.AnimatedIcon, width, height, xoffset, yoffset, damage float64, fragile bool, lifetime time.Duration) *Projectile {
 	proj := &Projectile{
 		RigidObject: *engine.NewRigidObject(posx, posy, velx, vely, scalex, scaley, rotation, icon, width, height, xoffset, yoffset),
 		Damage:      damage,

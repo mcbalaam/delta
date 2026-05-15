@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-
-	"github.com/mcbalaam/delta/internal/types"
 )
 
 type Frame struct {
@@ -19,7 +17,7 @@ type IconState struct {
 	CurrentFrame    int
 	CurrentFrameRef *Frame
 	Frames          []Frame
-	Mode            types.AnimationMode
+	Mode            AnimationMode
 	dir             int
 	elapsed         time.Duration
 	Continuous      bool
@@ -72,19 +70,19 @@ func (a *AnimatedIcon) Update(dt time.Duration) {
 	for s.Frames[s.CurrentFrame].Time > 0 && s.elapsed >= s.Frames[s.CurrentFrame].Time {
 		s.elapsed -= s.Frames[s.CurrentFrame].Time
 		switch s.Mode {
-		case types.AnimationModeLoop:
+		case AnimationModeLoop:
 			s.CurrentFrame++
 			if s.CurrentFrame >= len(s.Frames) {
 				s.CurrentFrame = 0
 			}
-		case types.AnimationModeOnce:
+		case AnimationModeOnce:
 			if s.CurrentFrame < len(s.Frames)-1 {
 				s.CurrentFrame++
 			} else {
 				s.elapsed = 0
 				return
 			}
-		case types.AnimationModePingPong:
+		case AnimationModePingPong:
 			if s.dir == 0 {
 				s.dir = 1
 			}
