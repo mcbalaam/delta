@@ -1,10 +1,13 @@
 package engine
 
 import (
+	"image/color"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/mcbalaam/delta/internal/render"
 	"github.com/mcbalaam/delta/internal/sound"
 )
@@ -20,6 +23,7 @@ type Glyph struct {
 	ScaleX float64
 	ScaleY float64
 	Tilt   float64
+	Color  color.Color
 }
 
 func (g *Glyph) Draw(s *ebiten.Image) {
@@ -27,23 +31,132 @@ func (g *Glyph) Draw(s *ebiten.Image) {
 	op.GeoM.Scale(g.ScaleX, g.ScaleY)
 	op.GeoM.Rotate(g.Tilt)
 	op.GeoM.Translate(g.PosX, g.PosY)
+	op.ColorScale.ScaleWithColor(g.Color)
 	s.DrawImage(g.Image, op)
 }
 
+type CommandType int
+
+const (
+	CmdChar CommandType = iota
+	CmdEnd
+)
+
+type DialogueCommand struct {
+	Type      CommandType
+	Char      string
+	Color     color.Color
+	X         float64
+	Y         float64
+	TriggerAt float64
+}
+
 type TextDisplay struct {
-	Font         render.AnimatedIcon
-	Text         string
-	StartX       float64
-	StartY       float64
-	ScaleX       float64
-	ScaleY       float64
-	Tilt         float64
-	Delay        float64
-	ElapsedTime  float64
-	CurrentIndex int
-	IsComplete   bool
-	CharWidth    map[string]int
-	SoundPlayer  *sound.SoundPlayer
+	Font        render.AnimatedIcon
+	Text        string
+	StartX      float64
+	StartY      float64
+	ScaleX      float64
+	ScaleY      float64
+	Tilt        float64
+	Delay       float64
+	ElapsedTime float64
+	IsComplete  bool
+	CharWidth   map[string]int
+	SoundPlayer *sound.SoundPlayer
+
+	Commands    []DialogueCommand
+	CmdIndex    int
+	Displayed   []*Glyph
+	OnComplete  func()
+	WaitingForZ bool
+}
+
+func (t *TextDisplay) Parse() {
+	runes := []rune(t.Text)
+	var cmds []DialogueCommand
+
+	currentTime := 0.0
+	curX := t.StartX
+	curY := t.StartY
+	curColor := color.Color(color.White)
+	curDelay := t.Delay
+	fontHeight := 24.0
+
+	i := 0
+	for i < len(runes) {
+		if runes[i] == '$' && i+1 < len(runes) {
+			cmdChar := runes[i+1]
+			i += 2
+
+			switch cmdChar {
+			case 'p':
+				valStr := ""
+				for i < len(runes) && runes[i] >= '0' && runes[i] <= '9' {
+					valStr += string(runes[i])
+					i++
+				}
+				ms, _ := strconv.Atoi(valStr)
+				currentTime += float64(ms) / 1000.0
+
+			case 'c':
+				if i+6 <= len(runes) {
+					hexStr := string(runes[i : i+6])
+					i += 6
+					r, _ := strconv.ParseUint(hexStr[0:2], 16, 8)
+					g, _ := strconv.ParseUint(hexStr[2:4], 16, 8)
+					b, _ := strconv.ParseUint(hexStr[4:6], 16, 8)
+					curColor = color.RGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: 255}
+				}
+
+			case 's':
+				valStr := ""
+				for i < len(runes) && runes[i] >= '0' && runes[i] <= '9' {
+					valStr += string(runes[i])
+					i++
+				}
+				ms, _ := strconv.Atoi(valStr)
+				curDelay = float64(ms) / 1000.0
+
+			case 'n':
+				curX = t.StartX
+				curY += (fontHeight + 20) * t.ScaleY
+
+			case 'e':
+				cmds = append(cmds, DialogueCommand{
+					Type:      CmdEnd,
+					TriggerAt: currentTime,
+				})
+			}
+			continue
+		}
+
+		char := string(runes[i])
+		charWidth := t.CharWidth[char]
+		if charWidth == 0 {
+			charWidth = 20
+		}
+
+		extraDelay := 0.0
+		if char == "." || char == "," {
+			extraDelay = curDelay * 10
+		}
+
+		cmds = append(cmds, DialogueCommand{
+			Type:      CmdChar,
+			Char:      char,
+			Color:     curColor,
+			X:         curX,
+			Y:         curY,
+			TriggerAt: currentTime,
+		})
+
+		currentTime += curDelay + extraDelay
+		curX += (float64(charWidth) + 2) * t.ScaleX
+		i++
+	}
+
+	t.Commands = cmds
 }
 
 func (t *TextDisplay) Update(deltaTime time.Duration) {
@@ -51,94 +164,78 @@ func (t *TextDisplay) Update(deltaTime time.Duration) {
 		return
 	}
 
-	if t.Delay <= 0 {
+	if t.WaitingForZ {
+		if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
+			t.WaitingForZ = false
+			t.IsComplete = true
+			if t.OnComplete != nil {
+				t.OnComplete()
+			}
+		}
 		return
 	}
 
 	t.ElapsedTime += deltaTime.Seconds()
 
-	nextIndex := -1
-	for i := 0; i < len(t.Text); i++ {
-		if t.GetLogicalTimeForIndex(i) <= t.ElapsedTime {
-			nextIndex = i
-		} else {
+	for t.CmdIndex < len(t.Commands) {
+		cmd := t.Commands[t.CmdIndex]
+		if cmd.TriggerAt > t.ElapsedTime {
 			break
 		}
-	}
 
-	if nextIndex < 0 {
-		nextIndex = 0
-	}
+		if cmd.Type == CmdEnd {
+			t.WaitingForZ = true
+			t.CmdIndex++
+			return
+		}
 
-	if nextIndex >= len(t.Text)-1 {
-		nextIndex = len(t.Text) - 1
-		t.IsComplete = true
-	}
+		if cmd.Type == CmdChar {
+			t.Font.SetIconState(cmd.Char)
 
-	if nextIndex != t.CurrentIndex {
-		t.CurrentIndex = nextIndex
-		char := string(t.Text[t.CurrentIndex])
-		t.Font.SetIconState(char)
+			glyph := &Glyph{
+				Image:  t.Font.CurrentState.CurrentFrameRef.Image,
+				PosX:   cmd.X,
+				PosY:   cmd.Y,
+				ScaleX: t.ScaleX,
+				ScaleY: t.ScaleY,
+				Tilt:   t.Tilt,
+				Color:  cmd.Color,
+			}
 
-		if t.SoundPlayer != nil {
-			if err := t.SoundPlayer.PlayVariable("snd_text", 0.5, 0.1); err != nil {
-				log.Printf("Error playing sound: %v", err)
+			t.Displayed = append(t.Displayed, glyph)
+
+			if t.SoundPlayer != nil {
+				if err := t.SoundPlayer.PlayVariable("snd_text", 0.9, 0.1); err != nil {
+					log.Printf("Error playing sound: %v", err)
+				}
 			}
 		}
-	}
-}
 
-func (t *TextDisplay) GetLogicalTimeForIndex(index int) float64 {
-	if index < 0 {
-		return 0
-	}
-	if index >= len(t.Text) {
-		index = len(t.Text) - 1
+		t.CmdIndex++
 	}
 
-	totalTime := 0.0
-	for i := 0; i <= index; i++ {
-		totalTime += t.Delay
-
-		if i > 0 && string(t.Text[i-1]) == "," {
-			totalTime += 10 * t.Delay
-		}
-
-		if i > 0 && string(t.Text[i-1]) == "." {
-			totalTime += 10 * t.Delay
+	if t.CmdIndex >= len(t.Commands) && !t.WaitingForZ {
+		t.IsComplete = true
+		if t.OnComplete != nil {
+			t.OnComplete()
 		}
 	}
-	return totalTime
 }
 
 func (t *TextDisplay) Draw(s *ebiten.Image) {
-	posX := t.StartX
-
-	for i := 0; i <= t.CurrentIndex && i < len(t.Text); i++ {
-		char := string(t.Text[i])
-		t.Font.SetIconState(char)
-
-		charWidth := t.CharWidth[char]
-		if charWidth == 0 {
-			charWidth = 20
-		}
-
-		glyph := &Glyph{
-			Image:  t.Font.CurrentState.CurrentFrameRef.Image,
-			PosX:   posX,
-			PosY:   t.StartY,
-			ScaleX: t.ScaleX,
-			ScaleY: t.ScaleY,
-			Tilt:   t.Tilt,
-		}
+	for _, glyph := range t.Displayed {
 		glyph.Draw(s)
-
-		posX += float64(charWidth) + 2
 	}
 }
 
+func (t *TextDisplay) Destroy() {
+	t.Displayed = nil
+	t.Commands = nil
+}
+
 func (te *TextEngine) DisplayText(fontName string, startX float64, startY float64,
-	scaleX float64, scaleY float64, tilt float64, text string, delaySeconds float64, soundPlayer *sound.SoundPlayer) (*TextDisplay, error) {
+	scaleX float64, scaleY float64, tilt float64, text string, delaySeconds float64,
+	soundPlayer *sound.SoundPlayer, onComplete func()) (*TextDisplay, error) {
 
 	if _, exists := te.FontsLoaded[fontName]; !exists {
 		icon, err := render.NewAnimatedIconFromPath("media/sprites/"+fontName, " ")
@@ -149,23 +246,25 @@ func (te *TextEngine) DisplayText(fontName string, startX float64, startY float6
 	}
 
 	font := te.FontsLoaded[fontName]
-
 	charWidths := make(map[string]int)
 
 	textDisplay := &TextDisplay{
-		Font:         font,
-		Text:         text,
-		StartX:       startX,
-		StartY:       startY,
-		ScaleX:       scaleX,
-		ScaleY:       scaleY,
-		Tilt:         tilt,
-		Delay:        delaySeconds,
-		CurrentIndex: 0,
-		IsComplete:   false,
-		CharWidth:    charWidths,
-		SoundPlayer:  soundPlayer,
+		Font:        font,
+		Text:        text,
+		StartX:      startX,
+		StartY:      startY,
+		ScaleX:      scaleX,
+		ScaleY:      scaleY,
+		Tilt:        tilt,
+		Delay:       delaySeconds,
+		IsComplete:  false,
+		CharWidth:   charWidths,
+		SoundPlayer: soundPlayer,
+		Displayed:   make([]*Glyph, 0),
+		OnComplete:  onComplete,
 	}
+
+	textDisplay.Parse()
 
 	DefaultQueue.Schedule(textDisplay)
 	DefaultUpdateQueue.Schedule(textDisplay)

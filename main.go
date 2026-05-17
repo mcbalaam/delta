@@ -111,21 +111,43 @@ func main() {
 		FontsLoaded: make(map[string]render.AnimatedIcon),
 	}
 
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	game := &Game{
 		arena:       arena.NewSquareArena(640, 480),
 		soundPlayer: soundPlayer,
 		textEngine:  textEngine,
 	}
 
-	textEngine.DisplayText("determination", 50, 50, 1.0, 1.0, 0,
-		"This text is rendered in Determination Mono.", 0.04, soundPlayer)
+	dialogueLines := []string{
+		"Warning:$p500 this game contains $c00CCFFflashing lights.$p200$cffffff$nViewer discretion is advised.$e",
+		"You have been warned.$e",
+	}
 
-	textEngine.DisplayText("spacemono", 50, 150, 1.0, 1.0, 0,
-		"This text is rendered in Space Mono.", 0.04, soundPlayer)
+	var currentDisplay *engine.TextDisplay
+	var playDialogue func(idx int)
+
+	playDialogue = func(idx int) {
+		if idx >= len(dialogueLines) {
+			if currentDisplay != nil {
+				currentDisplay.Destroy()
+			}
+			return
+		}
+
+		if currentDisplay != nil {
+			currentDisplay.Destroy()
+		}
+
+		td, err := textEngine.DisplayText("determination", 50.0, 50.0, 1.0, 1.0, 0,
+			dialogueLines[idx], 0.04, soundPlayer, func() {
+				playDialogue(idx + 1)
+			})
+		if err != nil {
+			log.Fatal(err)
+		}
+		currentDisplay = td
+	}
+
+	playDialogue(0)
 
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
