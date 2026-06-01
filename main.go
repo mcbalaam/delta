@@ -10,6 +10,7 @@ import (
 	"github.com/mcbalaam/delta/internal/assets"
 	"github.com/mcbalaam/delta/internal/engine"
 	"github.com/mcbalaam/delta/internal/game/arena"
+	"github.com/mcbalaam/delta/internal/game/battle"
 	"github.com/mcbalaam/delta/internal/render"
 	"github.com/mcbalaam/delta/internal/sound"
 	"github.com/mcbalaam/delta/internal/systems"
@@ -21,6 +22,7 @@ type Game struct {
 	collisionListener bool
 	soundPlayer       *sound.SoundPlayer
 	textEngine        *engine.TextEngine
+	CurrentBattle     *battle.Battle
 }
 
 var soul *engine.RigidObject
@@ -117,37 +119,11 @@ func main() {
 		textEngine:  textEngine,
 	}
 
-	dialogueLines := []string{
-		"Warning:$p500 this game contains $c00CCFFflashing lights.$p200$cffffff$nViewer discretion is advised.$e",
-		"You have been warned.$e",
+	lines := []string{
+		"* Ralsei chanted something!$p200$n* JEVIL's next attack weakened!$p200$n* JEVIL became more TIRED!$f",
 	}
-
-	var currentDisplay *engine.TextDisplay
-	var playDialogue func(idx int)
-
-	playDialogue = func(idx int) {
-		if idx >= len(dialogueLines) {
-			if currentDisplay != nil {
-				currentDisplay.Destroy()
-			}
-			return
-		}
-
-		if currentDisplay != nil {
-			currentDisplay.Destroy()
-		}
-
-		td, err := textEngine.DisplayText("determination", 50.0, 50.0, 1.0, 1.0, 0,
-			dialogueLines[idx], 0.04, soundPlayer, func() {
-				playDialogue(idx + 1)
-			})
-		if err != nil {
-			log.Fatal(err)
-		}
-		currentDisplay = td
-	}
-
-	playDialogue(0)
+	session := engine.NewDialogueSession(textEngine, lines, engine.StyleNarrative, soundPlayer)
+	session.Start()
 
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)

@@ -3,6 +3,7 @@ package engine
 import (
 	"image/color"
 	"log"
+	"math"
 	"strconv"
 	"time"
 
@@ -28,9 +29,13 @@ type Glyph struct {
 
 func (g *Glyph) Draw(s *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+
 	op.GeoM.Scale(g.ScaleX, g.ScaleY)
 	op.GeoM.Rotate(g.Tilt)
-	op.GeoM.Translate(g.PosX, g.PosY)
+
+	op.GeoM.Translate(math.Round(g.PosX), math.Round(g.PosY))
+
 	op.ColorScale.ScaleWithColor(g.Color)
 	s.DrawImage(g.Image, op)
 }
@@ -40,6 +45,7 @@ type CommandType int
 const (
 	CmdChar CommandType = iota
 	CmdEnd
+	CmdEndNoWait
 )
 
 type DialogueCommand struct {
@@ -58,12 +64,15 @@ type TextDisplay struct {
 	StartY      float64
 	ScaleX      float64
 	ScaleY      float64
+	FontHeight  float64
+	LineSpacing float64
 	Tilt        float64
 	Delay       float64
 	ElapsedTime float64
 	IsComplete  bool
 	CharWidth   map[string]int
 	SoundPlayer *sound.SoundPlayer
+	Instant     bool
 
 	Commands    []DialogueCommand
 	CmdIndex    int
@@ -81,7 +90,6 @@ func (t *TextDisplay) Parse() {
 	curY := t.StartY
 	curColor := color.Color(color.White)
 	curDelay := t.Delay
-	fontHeight := 24.0
 
 	i := 0
 	for i < len(runes) {
@@ -120,11 +128,16 @@ func (t *TextDisplay) Parse() {
 
 			case 'n':
 				curX = t.StartX
-				curY += (fontHeight + 20) * t.ScaleY
+				curY += (t.FontHeight + t.LineSpacing) * t.ScaleY
 
 			case 'e':
 				cmds = append(cmds, DialogueCommand{
 					Type:      CmdEnd,
+					TriggerAt: currentTime,
+				})
+			case 'f':
+				cmds = append(cmds, DialogueCommand{
+					Type:      CmdEndNoWait,
 					TriggerAt: currentTime,
 				})
 			}
@@ -134,7 +147,7 @@ func (t *TextDisplay) Parse() {
 		char := string(runes[i])
 		charWidth := t.CharWidth[char]
 		if charWidth == 0 {
-			charWidth = 20
+			charWidth = 20 // Дефолтное значение для 1:1 масштаба
 		}
 
 		extraDelay := 0.0
@@ -152,7 +165,7 @@ func (t *TextDisplay) Parse() {
 		})
 
 		currentTime += curDelay + extraDelay
-		curX += (float64(charWidth) + 2) * t.ScaleX
+		curX += ((float64(charWidth) + 2) * 3) * t.ScaleX
 		i++
 	}
 
@@ -161,6 +174,45 @@ func (t *TextDisplay) Parse() {
 
 func (t *TextDisplay) Update(deltaTime time.Duration) {
 	if t.IsComplete {
+		return
+	}
+
+	// Мгновенная сборка всей строки
+	if t.Instant {
+		for t.CmdIndex < len(t.Commands) {
+			cmd := t.Commands[t.CmdIndex]
+			if cmd.Type == CmdEnd {
+				t.WaitingForZ = true
+				t.CmdIndex++
+				return
+			}
+			if cmd.Type == CmdEndNoWait {
+				t.IsComplete = true
+				t.CmdIndex++
+				if t.OnComplete != nil {
+					t.OnComplete()
+				}
+				return
+			}
+			if cmd.Type == CmdChar {
+				t.Font.SetIconState(cmd.Char)
+				glyph := &Glyph{
+					Image:  t.Font.CurrentState.CurrentFrameRef.Image,
+					PosX:   cmd.X,
+					PosY:   cmd.Y,
+					ScaleX: t.ScaleX, // Чистый игровой масштаб
+					ScaleY: t.ScaleY,
+					Tilt:   t.Tilt,
+					Color:  cmd.Color,
+				}
+				t.Displayed = append(t.Displayed, glyph)
+			}
+			t.CmdIndex++
+		}
+		t.IsComplete = true
+		if t.OnComplete != nil {
+			t.OnComplete()
+		}
 		return
 	}
 
@@ -175,7 +227,16 @@ func (t *TextDisplay) Update(deltaTime time.Duration) {
 		return
 	}
 
-	t.ElapsedTime += deltaTime.Seconds()
+	if inpututil.IsKeyJustPressed(ebiten.KeyX) {
+		for i := t.CmdIndex; i < len(t.Commands); i++ {
+			if t.Commands[i].Type == CmdChar {
+				t.Commands[i].TriggerAt = 0
+			}
+		}
+		t.ElapsedTime = 100000.0
+	} else {
+		t.ElapsedTime += deltaTime.Seconds()
+	}
 
 	for t.CmdIndex < len(t.Commands) {
 		cmd := t.Commands[t.CmdIndex]
@@ -186,6 +247,15 @@ func (t *TextDisplay) Update(deltaTime time.Duration) {
 		if cmd.Type == CmdEnd {
 			t.WaitingForZ = true
 			t.CmdIndex++
+			return
+		}
+
+		if cmd.Type == CmdEndNoWait {
+			t.IsComplete = true
+			t.CmdIndex++
+			if t.OnComplete != nil {
+				t.OnComplete()
+			}
 			return
 		}
 
@@ -204,7 +274,7 @@ func (t *TextDisplay) Update(deltaTime time.Duration) {
 
 			t.Displayed = append(t.Displayed, glyph)
 
-			if t.SoundPlayer != nil {
+			if t.SoundPlayer != nil && !inpututil.IsKeyJustPressed(ebiten.KeyX) {
 				if err := t.SoundPlayer.PlayVariable("snd_text", 0.9, 0.1); err != nil {
 					log.Printf("Error playing sound: %v", err)
 				}
@@ -233,35 +303,35 @@ func (t *TextDisplay) Destroy() {
 	t.Commands = nil
 }
 
-func (te *TextEngine) DisplayText(fontName string, startX float64, startY float64,
-	scaleX float64, scaleY float64, tilt float64, text string, delaySeconds float64,
+func (te *TextEngine) DisplayText(style TextStyle, text string,
 	soundPlayer *sound.SoundPlayer, onComplete func()) (*TextDisplay, error) {
 
-	if _, exists := te.FontsLoaded[fontName]; !exists {
-		icon, err := render.NewAnimatedIconFromPath("media/sprites/"+fontName, " ")
+	if _, exists := te.FontsLoaded[style.FontName]; !exists {
+		icon, err := render.NewAnimatedIconFromPath("media/sprites/"+style.FontName, " ")
 		if err != nil {
 			return nil, err
 		}
-		te.FontsLoaded[fontName] = *icon
+		te.FontsLoaded[style.FontName] = *icon
 	}
 
-	font := te.FontsLoaded[fontName]
-	charWidths := make(map[string]int)
+	font := te.FontsLoaded[style.FontName]
 
 	textDisplay := &TextDisplay{
 		Font:        font,
 		Text:        text,
-		StartX:      startX,
-		StartY:      startY,
-		ScaleX:      scaleX,
-		ScaleY:      scaleY,
-		Tilt:        tilt,
-		Delay:       delaySeconds,
+		StartX:      style.StartX,
+		StartY:      style.StartY,
+		ScaleX:      style.ScaleX,
+		ScaleY:      style.ScaleY,
+		FontHeight:  style.FontHeight,
+		LineSpacing: style.LineSpacing,
+		Delay:       style.DefaultDelay,
 		IsComplete:  false,
-		CharWidth:   charWidths,
+		CharWidth:   make(map[string]int),
 		SoundPlayer: soundPlayer,
 		Displayed:   make([]*Glyph, 0),
 		OnComplete:  onComplete,
+		Instant:     style.Instant,
 	}
 
 	textDisplay.Parse()

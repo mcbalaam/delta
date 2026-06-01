@@ -78,8 +78,6 @@ type GlyphFrame struct {
 	Image   image.Image
 }
 
-const FontSizePt = 32.0
-
 func ProcessFonts() {
 	outputDir := "media/sprites/"
 	os.MkdirAll(outputDir, 0755)
@@ -114,6 +112,11 @@ func ProcessFonts() {
 	}
 }
 
+const (
+	FontSizePt = 32.0
+	TargetDPI  = 288.0 // Изменяем с 72.0 на 288.0 (4x сэмплинг)
+)
+
 func processTTFFont(fontPath, fontName, outputDir string) error {
 	fontData, err := ioutil.ReadFile(fontPath)
 	if err != nil {
@@ -127,13 +130,18 @@ func processTTFFont(fontPath, fontName, outputDir string) error {
 
 	fontSize := float64(FontSizePt)
 
-	fontHeight := int(fontSize * 1.4)
-	baseline := int(fontSize * 1.1)
+	// Считаем коэффициент масштабирования относительно базовых 72 DPI
+	scale := TargetDPI / 72.0
+
+	// Масштабируем метрики высоты под высокий DPI
+	fontHeight := int(fontSize * scale * 1.4)
+	baseline := int(fontSize * scale * 1.1)
 
 	glyphFrames := []GlyphFrame{}
 
+	// Кодовая таблица ASCII
 	for i := 32; i < 127; i++ {
-		img, err := renderGlyph(ttfFont, rune(i), fontSize, fontHeight, baseline)
+		img, err := renderGlyph(ttfFont, rune(i), fontSize, TargetDPI, fontHeight, baseline)
 		if err != nil || img == nil {
 			continue
 		}
@@ -148,8 +156,9 @@ func processTTFFont(fontPath, fontName, outputDir string) error {
 		}
 	}
 
+	// Расширенная латиница (при необходимости добавьте сюда кириллицу: 0x0400 - 0x04FF)
 	for i := 0x0100; i < 0x0180; i++ {
-		img, err := renderGlyph(ttfFont, rune(i), fontSize, fontHeight, baseline)
+		img, err := renderGlyph(ttfFont, rune(i), fontSize, TargetDPI, fontHeight, baseline)
 		if err != nil || img == nil {
 			continue
 		}
@@ -201,30 +210,41 @@ func processTTFFont(fontPath, fontName, outputDir string) error {
 	return nil
 }
 
-func renderGlyph(ttfFont *truetype.Font, ch rune, fontSize float64, fontHeight int, ascent int) (image.Image, error) {
-	dpi := 72.0
-
+func renderGlyph(ttfFont *truetype.Font, ch rune, fontSize float64, dpi float64, fontHeight int, ascent int) (image.Image, error) {
 	canvasWidth := int(fontSize * 4)
 	img := image.NewRGBA(image.Rect(0, 0, canvasWidth, fontHeight))
 	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{0, 0, 0, 0}), image.Point{}, draw.Src)
 
 	c := freetype.NewContext()
-	c.SetDPI(dpi)
+	c.SetDPI(dpi) // Здесь должно быть 72.0
 	c.SetFont(ttfFont)
-	c.SetFontSize(fontSize)
+	c.SetFontSize(24) // Размер должен быть кратен родному размеру шрифта (обычно 16 или 32)
 	c.SetClip(img.Bounds())
 	c.SetDst(img)
 	c.SetSrc(image.NewUniform(color.White))
 
-	pt := fixed.Point26_6{X: fixed.Int26_6(10 * 64), Y: fixed.Int26_6(ascent * 64)}
+	startX := 10
+	pt := fixed.Point26_6{X: fixed.Int26_6(startX * 64), Y: fixed.Int26_6(ascent * 64)}
+
 	_, err := c.DrawString(string(ch), pt)
 	if err != nil {
 		return nil, err
 	}
 
-	minX, maxX := canvasWidth, 0
-
 	bounds := img.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			_, _, _, a := img.At(x, y).RGBA()
+			if a >= 32768 { // Если пиксель закрашен больше чем наполовину
+				img.SetRGBA(x, y, color.RGBA{255, 255, 255, 255})
+			} else {
+				img.SetRGBA(x, y, color.RGBA{0, 0, 0, 0})
+			}
+		}
+	}
+
+	// Очистка пустых краев (код остается прежним)
+	minX, maxX := canvasWidth, 0
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			_, _, _, a := img.At(x, y).RGBA()
@@ -241,7 +261,6 @@ func renderGlyph(ttfFont *truetype.Font, ch rune, fontSize float64, fontHeight i
 
 	if minX == canvasWidth {
 		emptyImg := image.NewRGBA(image.Rect(0, 0, 1, fontHeight))
-		draw.Draw(emptyImg, emptyImg.Bounds(), image.NewUniform(color.RGBA{0, 0, 0, 0}), image.Point{}, draw.Src)
 		return emptyImg, nil
 	}
 
