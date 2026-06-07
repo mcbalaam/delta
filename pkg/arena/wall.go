@@ -30,21 +30,14 @@ func NewArenaWall(x, y, width, height float64, color color.Color) *ArenaWall {
 }
 
 func (w *ArenaWall) Draw(s *ebiten.Image) {
-	if w.Hitbox == nil || len(w.Hitbox.WorldVerts) < 2 {
+	if w.Hitbox == nil {
 		return
 	}
 
-	for i := 0; i < len(w.Hitbox.WorldVerts); i++ {
-		current := w.Hitbox.WorldVerts[i]
-		next := w.Hitbox.WorldVerts[(i+1)%len(w.Hitbox.WorldVerts)]
-
-		vector.StrokeLine(s,
-			float32(current.X), float32(current.Y),
-			float32(next.X), float32(next.Y),
-			3,
-			w.Color,
-			true)
-	}
-
-	w.DrawHitboxDebug(s)
+	vector.DrawFilledRect(s,
+		float32(w.PosX-w.Hitbox.Width/2),
+		float32(w.PosY-w.Hitbox.Height/2),
+		float32(w.Hitbox.Width),
+		float32(w.Hitbox.Height),
+		w.Color, false)
 }

@@ -24,10 +24,12 @@ type AtlasMeta struct {
 type AtlasManager struct {
 	mu             sync.RWMutex
 	IconStateCache map[string]IconState
+	BasePath       string // directory where atlas subfolders live, e.g. "media/sprites"
 }
 
 var DefaultManager = &AtlasManager{
 	IconStateCache: map[string]IconState{},
+	BasePath:       "media/sprites",
 }
 
 func (m *AtlasManager) CacheIconStates(path string) error {
@@ -175,7 +177,7 @@ func (m *AtlasManager) LoadIconState(key string) (IconState, error) {
 	}
 	atlasName := parts[0]
 
-	spritesDir := filepath.Join("sprites", atlasName)
+	spritesDir := filepath.Join(m.BasePath, atlasName)
 	jsonPath := filepath.Join(spritesDir, atlasName+".json")
 	pngPath := filepath.Join(spritesDir, atlasName+".png")
 

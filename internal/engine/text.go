@@ -73,6 +73,7 @@ type TextDisplay struct {
 	CharWidth   map[string]int
 	SoundPlayer *sound.SoundPlayer
 	Instant     bool
+	CharSpacing float64
 
 	Commands    []DialogueCommand
 	CmdIndex    int
@@ -165,7 +166,11 @@ func (t *TextDisplay) Parse() {
 		})
 
 		currentTime += curDelay + extraDelay
-		curX += ((float64(charWidth) + 2) * 3) * t.ScaleX
+		spacing := t.CharSpacing
+		if spacing == 0 {
+			spacing = 2
+		}
+		curX += ((float64(charWidth) + spacing) * 3) * t.ScaleX
 		i++
 	}
 
@@ -275,7 +280,7 @@ func (t *TextDisplay) Update(deltaTime time.Duration) {
 			t.Displayed = append(t.Displayed, glyph)
 
 			if t.SoundPlayer != nil && !inpututil.IsKeyJustPressed(ebiten.KeyX) {
-				if err := t.SoundPlayer.PlayVariable("snd_text", 0.9, 0.1); err != nil {
+				if err := t.SoundPlayer.PlayVariable("snd_text", 2, 0.0); err != nil {
 					log.Printf("Error playing sound: %v", err)
 				}
 			}
@@ -332,6 +337,7 @@ func (te *TextEngine) DisplayText(style TextStyle, text string,
 		Displayed:   make([]*Glyph, 0),
 		OnComplete:  onComplete,
 		Instant:     style.Instant,
+		CharSpacing: style.CharSpacing,
 	}
 
 	textDisplay.Parse()
