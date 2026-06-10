@@ -9,6 +9,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/mcbalaam/delta/internal/engine/queues"
 	"github.com/mcbalaam/delta/internal/render"
 	"github.com/mcbalaam/delta/internal/sound"
 )
@@ -280,7 +281,7 @@ func (t *TextDisplay) Update(deltaTime time.Duration) {
 			t.Displayed = append(t.Displayed, glyph)
 
 			if t.SoundPlayer != nil && !inpututil.IsKeyJustPressed(ebiten.KeyX) {
-				if err := t.SoundPlayer.PlayVariable("snd_text", 2, 0.0); err != nil {
+				if err := t.SoundPlayer.PlayVariable("snd_text", 2, 0.1); err != nil {
 					log.Printf("Error playing sound: %v", err)
 				}
 			}
@@ -301,6 +302,14 @@ func (t *TextDisplay) Draw(s *ebiten.Image) {
 	for _, glyph := range t.Displayed {
 		glyph.Draw(s)
 	}
+}
+
+func (t *TextDisplay) ForceComplete() {
+	if t.IsComplete {
+		return
+	}
+	t.WaitingForZ = false
+	t.IsComplete = true
 }
 
 func (t *TextDisplay) Destroy() {
@@ -342,8 +351,8 @@ func (te *TextEngine) DisplayText(style TextStyle, text string,
 
 	textDisplay.Parse()
 
-	DefaultQueue.Schedule(textDisplay)
-	DefaultUpdateQueue.Schedule(textDisplay)
+	queues.DefaultQueue.ScheduleAt(textDisplay, queues.LayerText)
+	queues.DefaultUpdateQueue.Schedule(textDisplay)
 
 	return textDisplay, nil
 }

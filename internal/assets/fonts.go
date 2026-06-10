@@ -78,6 +78,18 @@ type GlyphFrame struct {
 	Image   image.Image
 }
 
+func alreadyProcessed(dir, name string) bool {
+	png := filepath.Join(dir, name+".png")
+	json := filepath.Join(dir, name+".json")
+	if _, err := os.Stat(png); os.IsNotExist(err) {
+		return false
+	}
+	if _, err := os.Stat(json); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
 func ProcessFonts() {
 	outputDir := "media/sprites/"
 	os.MkdirAll(outputDir, 0755)
@@ -95,11 +107,15 @@ func ProcessFonts() {
 
 		fontPath := filepath.Join("media/fonts", file.Name())
 		fontName := strings.TrimSuffix(file.Name(), ".ttf")
+		fontOutputDir := filepath.Join(outputDir, fontName)
+
+		if alreadyProcessed(fontOutputDir, fontName) {
+			fmt.Printf("Font already processed: %s (skipping)\n", fontName)
+			continue
+		}
 
 		fmt.Printf("Preprocessing font: %s...\n", file.Name())
 
-		// Создаём подпапку для каждого шрифта
-		fontOutputDir := filepath.Join(outputDir, fontName)
 		os.MkdirAll(fontOutputDir, 0755)
 
 		err := processTTFFont(fontPath, fontName, fontOutputDir)

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/mcbalaam/delta/internal/engine/queues"
 	"github.com/mcbalaam/delta/internal/render"
 )
 
@@ -57,8 +58,8 @@ func ShowDebugNotice(te *TextEngine, text string, x, y float64, duration time.Du
 		duration: duration,
 	}
 
-	DefaultQueue.Schedule(dn)
-	DefaultUpdateQueue.Schedule(dn)
+	queues.DefaultQueue.ScheduleAt(dn, queues.LayerOverlay)
+	queues.DefaultUpdateQueue.Schedule(dn)
 
 	return dn
 }

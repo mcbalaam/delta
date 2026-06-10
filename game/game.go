@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/mcbalaam/delta/internal/engine"
+	"github.com/mcbalaam/delta/internal/engine/queues"
 	"github.com/mcbalaam/delta/internal/render"
 	"github.com/mcbalaam/delta/internal/sound"
 	"github.com/mcbalaam/delta/pkg/arena"
@@ -17,14 +18,15 @@ import (
 
 type Game struct {
 	last          time.Time
+	scenes        *engine.SceneManager
 	soundPlayer   *sound.SoundPlayer
 	textEngine    *engine.TextEngine
-	CurrentBattle *battle.Battle
-	layoutOverlay *ebiten.Image // debug layout reference
+	layoutOverlay *ebiten.Image
 }
 
 func NewGame(soundPlayer *sound.SoundPlayer, textEngine *engine.TextEngine) *Game {
 	g := &Game{
+		scenes:      &engine.SceneManager{},
 		soundPlayer: soundPlayer,
 		textEngine:  textEngine,
 	}
@@ -69,20 +71,18 @@ func (g *Game) setupTestBattle() {
 		log.Fatalf("kris sprite: %v", err)
 	}
 
-	// ── Background grid ──
 	bgGrid := background.NewDualGridBG()
-	engine.DefaultQueue.Schedule(&background.GridLayer{BG: bgGrid})
-	engine.DefaultUpdateQueue.Schedule(&background.GridLayer{BG: bgGrid})
+	queues.DefaultQueue.ScheduleAt(&background.GridLayer{BG: bgGrid}, queues.LayerBackground)
+	queues.DefaultUpdateQueue.Schedule(&background.GridLayer{BG: bgGrid})
 
-	// ── Arena box (hidden until enemy turn) ──
 	sa := arena.NewSquareArena(640, 480)
 	sa.SetSprite(arenaIcon)
 
 	spriteLayer := &arena.SpriteLayer{Arena: sa, Visible: true}
 	boxLayer := &arena.BoxLayer{Arena: sa, Visible: false}
-	engine.DefaultQueue.Schedule(spriteLayer)
-	engine.DefaultQueue.Schedule(boxLayer)
-	engine.DefaultUpdateQueue.Schedule(spriteLayer)
+	queues.DefaultQueue.ScheduleAt(spriteLayer, queues.LayerArena)
+	queues.DefaultQueue.ScheduleAt(boxLayer, queues.LayerArena)
+	queues.DefaultUpdateQueue.Schedule(spriteLayer)
 
 	showArena := func() {
 		boxLayer.Visible = true
@@ -91,7 +91,6 @@ func (g *Game) setupTestBattle() {
 		boxLayer.Visible = false
 	}
 
-	// ── Party members ──
 	kris := &battle.PartyMember{
 		Name:        "Kris",
 		AccentColor: color.RGBA{0, 162, 232, 255},
@@ -137,7 +136,6 @@ func (g *Game) setupTestBattle() {
 		BattleMiniature: ralseiIcon,
 	}
 
-	// ── Opponent ──
 	jevil := &battle.Opponent{
 		Name:     "Enemy",
 		MaxHP:    500,
@@ -152,18 +150,11 @@ func (g *Game) setupTestBattle() {
 		},
 		Reactions: map[string]battle.ActReaction{
 			"Tire": {StateChange: battle.StateTired, MercyAmount: 30},
-			//			"Pirouette":  {MercyAmount: 15},
-			//			"Threaten":   {MercyAmount: 10},
-			//			"Intimidate": {MercyAmount: 10, AttackDelta: -2},
-			//			"Pacify":     {MercyAmount: 25, StateChange: battle.StateFlustered},
-			//			"Hypnosis":   {MercyAmount: 20},
 		},
 	}
 
-	// ── Turn script ──
 	testTurn := &battle.Turn{
 		Sequence: []battle.TurnEvent{
-
 			&battle.DialogueEvent{
 				Emitter: jevil,
 				Lines:   []string{"CHAOS, CHAOS!$e"},
@@ -175,22 +166,35 @@ func (g *Game) setupTestBattle() {
 		},
 	}
 
-	// ── Battle instance ──
-	b := &battle.Battle{
+	gameScene := &GameScene{}
+	gameScene.Battle = &battle.Battle{
 		TextEngine:   g.textEngine,
 		SoundPlayer:  g.soundPlayer,
 		Party:        []*battle.PartyMember{kris, susie, ralsei},
 		Opponents:    []*battle.Opponent{jevil},
 		ActiveMember: 0,
 	}
-	b.SetMenuSprite(menuIcon)
-	b.SetSoulSprite(soulIcon)
-	b.SetArenaHooks(showArena, hideArena)
-	b.StartTurn(testTurn, []string{
+	gameScene.Battle.SetMenuSprite(menuIcon)
+	gameScene.Battle.SetSoulSprite(soulIcon)
+	gameScene.Battle.SetArenaHooks(showArena, hideArena)
+	gameScene.Battle.SetArenaBounds(sa.ArenaInner())
+	gameScene.Battle.StartTurn(testTurn, []string{
 		"* A wild Enemy approaches!$f",
 	})
 
-	g.CurrentBattle = b
+	intro := NewIntroScene(
+		gameScene.Update,
+		gameScene.Draw,
+		func() {
+			g.scenes.Pop()
+			g.scenes.Push(gameScene)
+		},
+	)
+	g.scenes.Push(intro)
+
+	if err := g.soundPlayer.PlaySound("battle", 1.2); err != nil {
+		log.Printf("music: %v", err)
+	}
 }
 
 func (g *Game) Update() error {
@@ -201,29 +205,12 @@ func (g *Game) Update() error {
 	dt := now.Sub(g.last)
 	g.last = now
 
-	if g.CurrentBattle != nil {
-		g.CurrentBattle.Update(dt)
-		g.CurrentBattle.NavigateMenu()
-	}
-
-	engine.DefaultUpdateQueue.Execute(dt)
+	g.scenes.Update(dt)
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	engine.DefaultQueue.Execute(screen)
-
-	if g.CurrentBattle != nil {
-		g.CurrentBattle.DrawMenu(screen)
-	}
-
-	// // Debug layout overlay at 30% opacity
-	// if g.layoutOverlay != nil {
-	// 	op := &ebiten.DrawImageOptions{}
-	// 	op.ColorScale.ScaleAlpha(0.3)
-	// 	op.GeoM.Scale(2.0, 2.0)
-	// 	screen.DrawImage(g.layoutOverlay, op)
-	// }
+	g.scenes.Draw(screen)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {

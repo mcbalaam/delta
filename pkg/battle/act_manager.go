@@ -5,7 +5,6 @@ type ActSource int
 
 const (
 	ActSourceMember   ActSource = iota // from the currently active party member
-	ActSourceLeader                    // from the party leader
 	ActSourceOpponent                  // from the target opponent
 )
 
@@ -16,16 +15,15 @@ type ActEntry struct {
 	Emitter interface{} // *PartyMember or *Opponent — origin for effect lookup
 }
 
-// CollectActs builds the merged ACT menu.
+// CollectActs builds the ACT menu for the current member.
 //
-// Priority (highest → lowest):
-//  1. activeMember.Acts   (current party member's personal acts)
-//  2. leader.Acts         (party leader's universal acts)
-//  3. targetOpponent.Acts (opponent-specific acts)
+// Order (highest priority first):
+//  1. targetOpponent.Acts (opponent-specific acts)
+//  2. activeMember.Acts   (current party member's personal acts)
 //
-// Duplicates by Name are resolved in favour of the higher priority source.
+// Duplicates by Name are resolved in favour of the member's acts.
 // Order is stable: entries appear in the order they were first encountered.
-func CollectActs(leader, activeMember *PartyMember, targetOpponent *Opponent) []ActEntry {
+func CollectActs(activeMember *PartyMember, targetOpponent *Opponent) []ActEntry {
 	seen := make(map[string]ActEntry)
 	var order []string // preserve insertion order
 
@@ -38,12 +36,9 @@ func CollectActs(leader, activeMember *PartyMember, targetOpponent *Opponent) []
 		}
 	}
 
-	// Lowest priority first — so higher priority overwrites seen entries.
+	// Opponent acts first, so member acts overwrite on name collision.
 	if targetOpponent != nil {
 		add(ActSourceOpponent, targetOpponent, targetOpponent.Acts)
-	}
-	if leader != nil {
-		add(ActSourceLeader, leader, leader.Acts)
 	}
 	if activeMember != nil {
 		add(ActSourceMember, activeMember, activeMember.Acts)

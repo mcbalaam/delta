@@ -3,7 +3,7 @@ package battle
 import (
 	"time"
 
-	"github.com/mcbalaam/delta/internal/engine"
+	"github.com/mcbalaam/delta/internal/engine/queues"
 )
 
 type AttackSequence struct {
@@ -23,8 +23,8 @@ func (a *AttackSequence) Update(dt time.Duration) {
 
 	for _, launcher := range a.Projectiles {
 		if a.TimePassed >= launcher.LaunchAt {
-			engine.DefaultQueue.Schedule(launcher.Projectile)
-			engine.DefaultUpdateQueue.Schedule(launcher.Projectile)
+			queues.DefaultQueue.ScheduleAt(launcher.Projectile, launcher.Projectile.Layer)
+			queues.DefaultUpdateQueue.Schedule(launcher.Projectile)
 		} else {
 			remaining = append(remaining, launcher)
 		}

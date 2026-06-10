@@ -57,6 +57,18 @@ func (s *DialogueSession) next() {
 	s.currentDisp = disp
 }
 
+func (s *DialogueSession) ForceComplete() {
+	if s.currentDisp != nil {
+		s.currentDisp.ForceComplete()
+	}
+	if s.currentIndex < len(s.lines) {
+		s.currentIndex = len(s.lines)
+		if s.OnAllComplete != nil {
+			s.OnAllComplete()
+		}
+	}
+}
+
 func (s *DialogueSession) Destroy() {
 	if s.currentDisp != nil {
 		s.currentDisp.Destroy()

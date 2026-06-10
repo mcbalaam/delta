@@ -77,17 +77,19 @@ func (sa *SquareArena) ArenaInner() (x, y, w, h float64) {
 	if sa.TopWall == nil {
 		return 0, 0, 0, 0
 	}
-	left := sa.LeftWall.PosX + sa.LeftWall.Hitbox.Width/2
-	top := sa.TopWall.PosY + sa.TopWall.Hitbox.Height/2
-	right := sa.RightWall.PosX - sa.RightWall.Hitbox.Width/2
-	bottom := sa.BottomWall.PosY - sa.BottomWall.Hitbox.Height/2
+	left := sa.LeftWall.Transform.X + sa.LeftWall.Collider.Width/2
+	top := sa.TopWall.Transform.Y + sa.TopWall.Collider.Height/2
+	right := sa.RightWall.Transform.X - sa.RightWall.Collider.Width/2
+	bottom := sa.BottomWall.Transform.Y - sa.BottomWall.Collider.Height/2
 	return left, top, right - left, bottom - top
 }
 
-func (sa *SquareArena) CheckCollision(obj *engine.RigidObject) *ArenaWall {
+func (sa *SquareArena) CheckCollision(obj *engine.Entity) *ArenaWall {
 	for _, wall := range sa.Walls {
-		if obj.CollidesWith(wall.RigidObject) {
-			return wall
+		if obj.Collider != nil && wall.Collider != nil {
+			if obj.Collider.CollidesWith(wall.Collider) {
+				return wall
+			}
 		}
 	}
 	return nil
