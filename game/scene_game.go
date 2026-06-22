@@ -9,7 +9,8 @@ import (
 )
 
 type GameScene struct {
-	Battle *battle.Battle
+	Battle          *battle.Battle
+	dialogueBoxID   interface{}
 }
 
 func (s *GameScene) Update(dt time.Duration) {
@@ -19,6 +20,11 @@ func (s *GameScene) Update(dt time.Duration) {
 	}
 	queues.DefaultUpdateQueue.Execute(dt)
 	queues.DefaultDeleteQueue.Execute()
+
+	// Schedule/un-schedule dialogue box at layer between arena and text
+	if s.Battle != nil {
+		s.Battle.ScheduleDialogueBox(&s.dialogueBoxID)
+	}
 }
 
 func (s *GameScene) Draw(screen *ebiten.Image) {

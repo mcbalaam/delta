@@ -106,6 +106,10 @@ func (a *AnimatedIcon) Update(dt time.Duration) {
 }
 
 func (a *AnimatedIcon) Draw(screen *ebiten.Image, x, y, scaleX, scaleY, tilt float64) {
+	a.DrawWithColorScale(screen, x, y, scaleX, scaleY, tilt, 1, 1, 1, 1)
+}
+
+func (a *AnimatedIcon) DrawWithColorScale(screen *ebiten.Image, x, y, scaleX, scaleY, tilt, r, g, b, alpha float64) {
 	s := a.CurrentState
 	if s == nil || len(s.Frames) == 0 {
 		return
@@ -118,6 +122,9 @@ func (a *AnimatedIcon) Draw(screen *ebiten.Image, x, y, scaleX, scaleY, tilt flo
 	op.GeoM.Scale(scaleX, scaleY)
 	op.GeoM.Rotate(tilt)
 	op.GeoM.Translate(x, y)
+	if r != 1 || g != 1 || b != 1 || alpha != 1 {
+		op.ColorScale.Scale(float32(r), float32(g), float32(b), float32(alpha))
+	}
 	screen.DrawImage(frame.Image, op)
 }
 

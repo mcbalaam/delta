@@ -21,8 +21,11 @@ type PartyMember struct {
 	Voice  string // sound name for dialogue SFX
 
 	// ── Battle UI ──
-	AccentColor     color.Color          // colors the member's card border
-	BattleMiniature *render.AnimatedIcon // character icon on the battle card
+	AccentColor      color.Color          // colors the member's card border
+	BattleMiniature  *render.AnimatedIcon // character icon on the battle card
+	CharacterSprite  *render.AnimatedIcon // character portrait with animations
+	PlayingDefendRev bool                 // playing defend animation in reverse
+	DefendRevFrame   int                  // current reverse frame index
 
 	MaxHP   float64
 	HP      float64

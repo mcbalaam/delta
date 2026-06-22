@@ -1,6 +1,7 @@
 package game
 
 import (
+	"fmt"
 	"image/color"
 	"log"
 	"time"
@@ -75,8 +76,9 @@ func (g *Game) setupTestBattle() {
 	queues.DefaultQueue.ScheduleAt(&background.GridLayer{BG: bgGrid}, queues.LayerBackground)
 	queues.DefaultUpdateQueue.Schedule(&background.GridLayer{BG: bgGrid})
 
-	sa := arena.NewSquareArena(640, 480)
+	sa := arena.NewSquareArena(640, 380)
 	sa.SetSprite(arenaIcon)
+	sa.SetSpritePos(0, 0, 2) // static background, independent of arena geometry
 
 	spriteLayer := &arena.SpriteLayer{Arena: sa, Visible: true}
 	boxLayer := &arena.BoxLayer{Arena: sa, Visible: false}
@@ -93,7 +95,7 @@ func (g *Game) setupTestBattle() {
 
 	kris := &battle.PartyMember{
 		Name:        "Kris",
-		AccentColor: color.RGBA{0, 162, 232, 255},
+		AccentColor: color.RGBA{1, 255, 255, 255},
 		MaxHP:       90,
 		HP:          90,
 		Attack:      10,
@@ -105,10 +107,15 @@ func (g *Game) setupTestBattle() {
 		},
 		BattleMiniature: krisIcon,
 	}
+	if krisChar, err := render.NewAnimatedIconFromPath("game/media/sprites/kris", "idle"); err == nil {
+		kris.CharacterSprite = krisChar
+	} else {
+		log.Printf("kris char sprite: %v", err)
+	}
 
 	susie := &battle.PartyMember{
 		Name:        "Susie",
-		AccentColor: color.RGBA{180, 80, 220, 255},
+		AccentColor: color.RGBA{255, 0, 255, 255},
 		MaxHP:       110,
 		HP:          110,
 		Attack:      15,
@@ -123,7 +130,7 @@ func (g *Game) setupTestBattle() {
 
 	ralsei := &battle.PartyMember{
 		Name:        "Ralsei",
-		AccentColor: color.RGBA{0, 200, 100, 255},
+		AccentColor: color.RGBA{1, 255, 0, 255},
 		MaxHP:       70,
 		HP:          70,
 		Attack:      5,
@@ -136,34 +143,27 @@ func (g *Game) setupTestBattle() {
 		BattleMiniature: ralseiIcon,
 	}
 
-	jevil := &battle.Opponent{
-		Name:     "Enemy",
-		MaxHP:    500,
-		HP:       500,
-		Attack:   12,
-		Defense:  10,
+	rudinn := &battle.Opponent{
+		Name:     "Rudinn",
+		MaxHP:    300,
+		HP:       300,
+		Attack:   10,
+		Defense:  8,
 		MaxMercy: 100,
 		Mercy:    0,
 		Acts: []battle.ActDef{
-			{Name: "Tire", Description: "Tire the Enemy out"},
-			{Name: "Pirouette", Description: "Dance with the Enemy"},
+			{Name: "Talk", Description: "Try to reason with Rudinn"},
+			{Name: "Compliment", Description: "Flatter Rudinn"},
 		},
 		Reactions: map[string]battle.ActReaction{
-			"Tire": {StateChange: battle.StateTired, MercyAmount: 30},
+			"Talk":       {StateChange: battle.StateTired, MercyAmount: 20},
+			"Compliment": {StateChange: battle.StateFlustered, MercyAmount: 30},
 		},
 	}
-
-	testTurn := &battle.Turn{
-		Sequence: []battle.TurnEvent{
-			&battle.DialogueEvent{
-				Emitter: jevil,
-				Lines:   []string{"CHAOS, CHAOS!$e"},
-			},
-			&battle.AttackEvent{
-				Duration: 5 * time.Second,
-				Sequence: &battle.AttackSequence{},
-			},
-		},
+	if rudinnChar, err := render.NewAnimatedIconFromPath("game/media/sprites/rudinn", "idle"); err == nil {
+		rudinn.CharacterSprite = rudinnChar
+	} else {
+		log.Printf("rudinn char sprite: %v", err)
 	}
 
 	gameScene := &GameScene{}
@@ -171,15 +171,81 @@ func (g *Game) setupTestBattle() {
 		TextEngine:   g.textEngine,
 		SoundPlayer:  g.soundPlayer,
 		Party:        []*battle.PartyMember{kris, susie, ralsei},
-		Opponents:    []*battle.Opponent{jevil},
+		Opponents:    []*battle.Opponent{rudinn},
 		ActiveMember: 0,
 	}
+
+	firstTurn := true
+	projIcon, err := render.NewAnimatedIconFromPath("media/sprites/hp", "idle")
+	if err != nil {
+		log.Fatalf("projectile icon: %v", err)
+	}
+
+	gameScene.Battle.OnTurnComplete = func() {
+		if firstTurn {
+			firstTurn = false
+		}
+		enemy := gameScene.Battle.Opponents[0]
+		if !enemy.Alive() {
+			return
+		}
+		nextTurn := &battle.Turn{
+			Sequence: []battle.TurnEvent{
+				&battle.DialogueEvent{
+					Emitter: enemy,
+					Lines:   []string{"Here I come!$e"},
+				},
+				&battle.AttackEvent{
+					Duration: 5 * time.Second,
+					Sequence: battle.NewBasicAttack(projIcon, 5, 5*time.Second, 25),
+				},
+			},
+		}
+		gameScene.Battle.StartTurn(nextTurn, []string{
+			fmt.Sprintf("* %s attacks!$f", enemy.Name),
+		})
+	}
+	if targetIcon, err := render.NewAnimatedIconFromPath("media/sprites/target", "idle"); err == nil {
+		gameScene.Battle.SetTargetIcon(targetIcon)
+	} else {
+		log.Printf("target icon: %v", err)
+	}
+
+	if boxIcon, err := render.NewAnimatedIconFromPath("media/sprites/dialoguebox", "idle"); err == nil {
+		gameScene.Battle.SetDialogueBox(boxIcon)
+	} else {
+		log.Printf("dialogue box: %v", err)
+	}
+
 	gameScene.Battle.SetMenuSprite(menuIcon)
 	gameScene.Battle.SetSoulSprite(soulIcon)
+	if hpIcon, err := render.NewAnimatedIconFromPath("media/sprites/hp", "idle"); err == nil {
+		gameScene.Battle.HPIcon = hpIcon
+	} else {
+		log.Printf("hp icon: %v", err)
+	}
+	if slashIcon, err := render.NewAnimatedIconFromPath("media/sprites/slash", "idle"); err == nil {
+		gameScene.Battle.SlashIcon = slashIcon
+	} else {
+		log.Printf("slash icon: %v", err)
+	}
 	gameScene.Battle.SetArenaHooks(showArena, hideArena)
 	gameScene.Battle.SetArenaBounds(sa.ArenaInner())
-	gameScene.Battle.StartTurn(testTurn, []string{
-		"* A wild Enemy approaches!$f",
+
+	firstTurnTurn := &battle.Turn{
+		Sequence: []battle.TurnEvent{
+			&battle.DialogueEvent{
+				Emitter: rudinn,
+				Lines:   []string{"Don't come $nany closer!$e"},
+			},
+			&battle.AttackEvent{
+				Duration: 5 * time.Second,
+				Sequence: battle.NewBasicAttack(projIcon, 5, 5*time.Second, 25),
+			},
+		},
+	}
+	gameScene.Battle.StartTurn(firstTurnTurn, []string{
+		fmt.Sprintf("* %s blocks the way!$f", rudinn.Name),
 	})
 
 	intro := NewIntroScene(
@@ -192,9 +258,13 @@ func (g *Game) setupTestBattle() {
 	)
 	g.scenes.Push(intro)
 
-	if err := g.soundPlayer.PlaySound("battle", 1.2); err != nil {
+	if err := g.soundPlayer.PlaySound("battle", 1); err != nil {
 		log.Printf("music: %v", err)
 	}
+}
+
+func RunScare() {
+
 }
 
 func (g *Game) Update() error {

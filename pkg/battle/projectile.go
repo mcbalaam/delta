@@ -31,8 +31,6 @@ func NewProjectile(posx, posy, velx, vely, scalex, scaley, rotation float64, ico
 	proj.Velocity = &components.Velocity{X: velx, Y: vely}
 	proj.Sprite = &components.Sprite{Icon: icon}
 	proj.Collider = components.NewCollider(width, height, xoffset, yoffset)
-	queues.DefaultQueue.ScheduleAt(proj, queues.LayerEntity)
-	queues.DefaultUpdateQueue.Schedule(proj)
 	return proj
 }
 
@@ -55,9 +53,13 @@ func (p *Projectile) Update(dt time.Duration) {
 		if p.Death != nil {
 			p.Death(p, dt)
 		}
+		queues.QDel(p)
 	}
 }
 
 func (p *Projectile) Draw(s *ebiten.Image) {
+	if p.Sprite == nil || p.Sprite.Icon == nil {
+		return
+	}
 	engine.DrawSpriteOnCollider(s, p.Sprite.Icon, p.Transform, p.Collider)
 }

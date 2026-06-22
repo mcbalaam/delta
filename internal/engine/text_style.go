@@ -1,5 +1,7 @@
 package engine
 
+import "image/color"
+
 type TextStyle struct {
 	FontName     string
 	StartX       float64
@@ -11,6 +13,7 @@ type TextStyle struct {
 	DefaultDelay float64
 	Instant      bool
 	CharSpacing  float64
+	Color        color.Color
 }
 
 func (s TextStyle) WithInstant(instant bool) TextStyle {
@@ -33,7 +36,7 @@ var (
 	}
 
 	StyleDialogue = TextStyle{
-		FontName:     "greater-determination",
+		FontName:     "greater-determination-sb",
 		StartX:       160.0,
 		StartY:       340.0,
 		ScaleX:       0.75,
@@ -43,5 +46,19 @@ var (
 		DefaultDelay: 0.03,
 		Instant:      false,
 		CharSpacing:  2.0,
+	}
+
+	StyleBubble = TextStyle{
+		FontName:     "greater-determination-sb",
+		StartX:       690.0,
+		StartY:       230.0,
+		ScaleX:       0.2,
+		ScaleY:       0.2,
+		FontHeight:   18.0,
+		LineSpacing:  128.0,
+		DefaultDelay: 0.03,
+		Instant:      false,
+		CharSpacing:  2.0,
+		Color:        color.RGBA{0, 0, 0, 255},
 	}
 )

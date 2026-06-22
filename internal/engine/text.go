@@ -75,6 +75,7 @@ type TextDisplay struct {
 	SoundPlayer *sound.SoundPlayer
 	Instant     bool
 	CharSpacing float64
+	DefaultColor color.Color
 
 	Commands    []DialogueCommand
 	CmdIndex    int
@@ -90,7 +91,10 @@ func (t *TextDisplay) Parse() {
 	currentTime := 0.0
 	curX := t.StartX
 	curY := t.StartY
-	curColor := color.Color(color.White)
+	curColor := t.DefaultColor
+	if curColor == nil {
+		curColor = color.White
+	}
 	curDelay := t.Delay
 
 	i := 0
@@ -281,7 +285,7 @@ func (t *TextDisplay) Update(deltaTime time.Duration) {
 			t.Displayed = append(t.Displayed, glyph)
 
 			if t.SoundPlayer != nil && !inpututil.IsKeyJustPressed(ebiten.KeyX) {
-				if err := t.SoundPlayer.PlayVariable("snd_text", 2, 0.1); err != nil {
+				if err := t.SoundPlayer.PlayVariable("snd_text", 2, 0); err != nil {
 					log.Printf("Error playing sound: %v", err)
 				}
 			}
@@ -331,22 +335,23 @@ func (te *TextEngine) DisplayText(style TextStyle, text string,
 	font := te.FontsLoaded[style.FontName]
 
 	textDisplay := &TextDisplay{
-		Font:        font,
-		Text:        text,
-		StartX:      style.StartX,
-		StartY:      style.StartY,
-		ScaleX:      style.ScaleX,
-		ScaleY:      style.ScaleY,
-		FontHeight:  style.FontHeight,
-		LineSpacing: style.LineSpacing,
-		Delay:       style.DefaultDelay,
-		IsComplete:  false,
-		CharWidth:   make(map[string]int),
-		SoundPlayer: soundPlayer,
-		Displayed:   make([]*Glyph, 0),
-		OnComplete:  onComplete,
-		Instant:     style.Instant,
-		CharSpacing: style.CharSpacing,
+		Font:         font,
+		Text:         text,
+		StartX:       style.StartX,
+		StartY:       style.StartY,
+		ScaleX:       style.ScaleX,
+		ScaleY:       style.ScaleY,
+		FontHeight:   style.FontHeight,
+		LineSpacing:  style.LineSpacing,
+		Delay:        style.DefaultDelay,
+		IsComplete:   false,
+		CharWidth:    make(map[string]int),
+		SoundPlayer:  soundPlayer,
+		Displayed:    make([]*Glyph, 0),
+		OnComplete:   onComplete,
+		Instant:      style.Instant,
+		CharSpacing:  style.CharSpacing,
+		DefaultColor: style.Color,
 	}
 
 	textDisplay.Parse()

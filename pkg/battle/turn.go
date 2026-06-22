@@ -45,7 +45,7 @@ func (e *DialogueEvent) Run(b *Battle, onDone func()) {
 	session := engine.NewDialogueSession(
 		b.TextEngine,
 		e.Lines,
-		engine.StyleDialogue,
+		engine.StyleBubble,
 		b.SoundPlayer,
 	)
 	session.OnAllComplete = func() {
@@ -99,9 +99,51 @@ func (e *AttackEvent) Run(b *Battle, onDone func()) {
 	b.turnAttackDuration = e.Duration
 	b.turnAttackElapsed = 0
 	b.turnAttackDone = onDone
+
+	b.SetState(StateEnemyTurn)
 }
 
 // Turn is the script for everything that happens after the player confirms actions.
 type Turn struct {
 	Sequence []TurnEvent
+}
+
+// ── TurnPlayer ───────────────────────────────────────────────────
+
+type TurnPlayer struct {
+	turn   *Turn
+	battle *Battle
+	index  int
+}
+
+func NewTurnPlayer(b *Battle, turn *Turn) *TurnPlayer {
+	return &TurnPlayer{
+		turn:   turn,
+		battle: b,
+		index:  0,
+	}
+}
+
+func (tp *TurnPlayer) Start() {
+	tp.index = 0
+	tp.next()
+}
+
+func (tp *TurnPlayer) next() {
+	if tp.battle.turnSession != nil {
+		tp.battle.turnSession.Destroy()
+		tp.battle.turnSession = nil
+	}
+
+	if tp.index >= len(tp.turn.Sequence) {
+		tp.battle.Targets = nil
+		if tp.battle.OnTurnComplete != nil {
+			tp.battle.OnTurnComplete()
+		}
+		return
+	}
+
+	event := tp.turn.Sequence[tp.index]
+	tp.index++
+	event.Run(tp.battle, func() { tp.next() })
 }

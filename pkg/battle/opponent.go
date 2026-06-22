@@ -1,5 +1,7 @@
 package battle
 
+import "github.com/mcbalaam/delta/internal/render"
+
 // OpponentState represents the visual/emotional state of an opponent.
 type OpponentState int
 
@@ -29,6 +31,7 @@ type ActDef struct {
 	Name        string
 	Description string // shown in the ACT menu
 	TargetSelf  bool   // false = targets this opponent, true = targets party
+	OnRun       func()
 }
 
 // ActReaction defines how the opponent responds to an ACT.
@@ -45,6 +48,8 @@ type Opponent struct {
 	Name   string
 	Sprite string // path for AnimatedIcon: "media/sprites/<name>"
 	Voice  string // sound name for dialogue SFX
+
+	CharacterSprite *render.AnimatedIcon // opponent portrait on the arena
 
 	MaxHP   float64
 	HP      float64

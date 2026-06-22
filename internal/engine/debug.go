@@ -18,8 +18,6 @@ type DebugNotice struct {
 	done     bool
 }
 
-// ShowDebugNotice creates and schedules a debug notice for the given duration.
-//
 //	text     — the string to display
 //	x, y     — screen position
 //	duration — how long the text should stay visible (e.g. 1*time.Second)
@@ -85,4 +83,17 @@ func (d *DebugNotice) Update(dt time.Duration) {
 			d.display = nil
 		}
 	}
+}
+
+func (d *DebugNotice) Destroy() {
+	if d.done {
+		return
+	}
+	d.done = true
+	if d.display != nil {
+		d.display.Destroy()
+		d.display = nil
+	}
+	queues.DefaultQueue.Unschedule(d)
+	queues.DefaultUpdateQueue.Unschedule(d)
 }

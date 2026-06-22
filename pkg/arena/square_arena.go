@@ -20,7 +20,10 @@ type SquareArena struct {
 	RightWall  *ArenaWall
 	Walls      []*ArenaWall
 
-	Sprite *render.AnimatedIcon
+	Sprite  *render.AnimatedIcon
+	SpriteX float64 // background sprite draw position (independent of arena geometry)
+	SpriteY float64
+	Scale   float64 // sprite render scale
 }
 
 func NewSquareArena(centerX, centerY float64) *SquareArena {
@@ -67,6 +70,12 @@ func NewSquareArena(centerX, centerY float64) *SquareArena {
 	}
 
 	return a
+}
+
+func (sa *SquareArena) SetSpritePos(x, y, s float64) {
+	sa.SpriteX = x
+	sa.SpriteY = y
+	sa.Scale = s
 }
 
 func (sa *SquareArena) SetSprite(s *render.AnimatedIcon) {
@@ -121,7 +130,11 @@ func (l *SpriteLayer) Draw(screen *ebiten.Image) {
 	if !l.Visible || l.Arena.Sprite == nil {
 		return
 	}
-	l.Arena.Sprite.Draw(screen, l.Arena.CenterX-640, l.Arena.CenterY-480, 2, 2, 0)
+	sc := l.Arena.Scale
+	if sc == 0 {
+		sc = 2
+	}
+	l.Arena.Sprite.Draw(screen, l.Arena.SpriteX, l.Arena.SpriteY, sc, sc, 0)
 }
 
 func (l *SpriteLayer) Update(dt time.Duration) {
