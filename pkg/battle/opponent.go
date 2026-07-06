@@ -1,6 +1,8 @@
 package battle
 
-import "github.com/mcbalaam/delta/internal/render"
+import (
+	"github.com/mcbalaam/delta/internal/render"
+)
 
 // OpponentState represents the visual/emotional state of an opponent.
 type OpponentState int
@@ -26,14 +28,6 @@ type StatusEffect struct {
 	Modifier StatusMod
 }
 
-// ActDef describes a unique ACT action available for this opponent.
-type ActDef struct {
-	Name        string
-	Description string // shown in the ACT menu
-	TargetSelf  bool   // false = targets this opponent, true = targets party
-	OnRun       func()
-}
-
 // ActReaction defines how the opponent responds to an ACT.
 type ActReaction struct {
 	Dialogue    []string      // lines spoken in a speech bubble
@@ -45,43 +39,28 @@ type ActReaction struct {
 
 // Opponent is a single enemy in a battle encounter.
 type Opponent struct {
-	Name   string
-	Sprite string // path for AnimatedIcon: "media/sprites/<name>"
-	Voice  string // sound name for dialogue SFX
+	Name     string
+	MaxHP    float64
+	HP       float64
+	Attack   float64
+	Defense  float64
+	MaxMercy float64
+	Mercy    float64
+	State    OpponentState
 
 	CharacterSprite *render.AnimatedIcon // opponent portrait on the arena
 
-	MaxHP   float64
-	HP      float64
-	Attack  float64
-	Defense float64
-
-	MaxMercy float64
-	Mercy    float64
-
-	State OpponentState
-
-	// Unique ACTs the player can use against this opponent.
-	Acts []ActDef
-	// Reactions maps an ACT name → the opponent's response.
+	Acts     []Act
 	Reactions map[string]ActReaction
 
 	Statuses []StatusEffect
 
 	// ── Callbacks ──────────────────────────────────────────
 
-	// OnTurnStart runs at the beginning of this opponent's turn.
-	OnTurnStart func(battleCtx interface{})
-
-	// OnDefeat runs when the opponent is defeated or spared.
-	OnDefeat func(battleCtx interface{})
-
-	// OnHit runs every time the opponent takes damage.
-	OnHit func(battleCtx interface{}, damage float64)
-
-	// AttackPattern returns a custom attack sequence for this opponent's turn.
-	// If nil, the default pattern from the Turn script is used.
-	AttackPattern func() *AttackSequence
+	OnTurnStart    func(battleCtx interface{})
+	OnDefeat       func(battleCtx interface{})
+	OnHit          func(battleCtx interface{}, damage float64)
+	AttackPattern  func() *AttackSequence
 }
 
 // GetDialogue returns the opponent's name for dialogue positioning.

@@ -88,7 +88,7 @@ func (b *Battle) navigateActs() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyZ) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		b.SoundPlayer.PlaySound("select", 1)
 		actDef := acts[b.SelectedAct].Def
-		b.commitAction(BtnActMagic, actDef.Name, b.SelectedTarget, b.targetIsAlly)
+		b.commitAction(BtnActMagic, actDef.Name(), b.SelectedTarget, b.targetIsAlly)
 		b.advanceFromSelecting()
 	}
 }
@@ -169,8 +169,10 @@ func (b *Battle) DrawMenu(screen *ebiten.Image) {
 	b.drawPartyOnArena(screen)
 	b.drawOpponents(screen)
 
-	if b.State == StateEnemyTurn && b.SoulSprite != nil {
-		b.SoulSprite.Draw(screen, b.SoulX, b.SoulY, 2.0, 2.0, 0)
+	if (b.State == StateEnemyTurn || b.State == StateBoxOpen || b.State == StateBoxClose) && b.SoulSprite != nil {
+		if b.InvincibilityTimer <= 0 || int(b.InvincibilityTimer/0.08)%2 == 1 {
+			b.SoulSprite.Draw(screen, b.SoulX, b.SoulY, 2.0, 2.0, 0)
+		}
 	}
 
 	b.drawTargetIcons(screen)
@@ -310,11 +312,11 @@ func (b *Battle) drawActList(screen *ebiten.Image) {
 
 	for i, entry := range acts {
 		y := actStartY + float64(i)*actLineH
-		b.drawMenuString(screen, actStyle, entry.Def.Name, listStartX, y-25)
+		b.drawMenuString(screen, actStyle, entry.Def.Name(), listStartX, y-25)
 	}
 
 	if b.SelectedAct >= 0 && b.SelectedAct < len(acts) {
-		desc := acts[b.SelectedAct].Def.Description
+		desc := acts[b.SelectedAct].Def.Description()
 		if desc != "" {
 			descX := screenW - 340.0
 			descY := actStartY - 8

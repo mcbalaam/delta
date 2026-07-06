@@ -2,6 +2,7 @@ package arena
 
 import (
 	"image/color"
+	"math"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -144,21 +145,203 @@ func (l *SpriteLayer) Update(dt time.Duration) {
 	l.Arena.Sprite.Update(dt)
 }
 
+type GhostFrame struct {
+	Scale    float64
+	Angle    float64
+	Recorded float64
+}
+
+const maxGhosts = 12
+const boxImgSize = 280
+
 // BoxLayer renders the black interior fill and green walls via the draw queue.
 type BoxLayer struct {
 	Arena   *SquareArena
 	Visible bool
+
+	entrancePlaying  bool
+	entranceProgress float64
+	entranceDuration float64
+	ghostFrames      [maxGhosts]GhostFrame
+	ghostHead        int
+	ghostCount       int
+	recordSkip       int
+
+	exitPlaying  bool
+	exitProgress float64
+	exitDuration float64
+
+	boxImg *ebiten.Image
+}
+
+func (l *BoxLayer) ensureBoxImg() {
+	if l.boxImg != nil {
+		return
+	}
+	l.boxImg = ebiten.NewImage(boxImgSize, boxImgSize)
+	_, _, iw, ih := l.Arena.ArenaInner()
+	imgCx, imgCy := float64(boxImgSize)/2, float64(boxImgSize)/2
+
+	innerX := imgCx - iw/2
+	innerY := imgCy - ih/2
+
+	l.boxImg.Fill(color.Transparent)
+
+	vector.DrawFilledRect(l.boxImg, float32(innerX), float32(innerY), float32(iw), float32(ih),
+		color.Black, false)
+
+	wt := 6.0
+	green := color.RGBA{0, 255, 0, 255}
+	vector.DrawFilledRect(l.boxImg, float32(innerX-wt), float32(innerY-wt), float32(iw+2*wt), float32(wt), green, false)
+	vector.DrawFilledRect(l.boxImg, float32(innerX-wt), float32(innerY+ih), float32(iw+2*wt), float32(wt), green, false)
+	vector.DrawFilledRect(l.boxImg, float32(innerX-wt), float32(innerY), float32(wt), float32(ih), green, false)
+	vector.DrawFilledRect(l.boxImg, float32(innerX+iw), float32(innerY), float32(wt), float32(ih), green, false)
+}
+
+func (l *BoxLayer) StartEntrance() {
+	l.entrancePlaying = true
+	l.entranceProgress = 0
+	l.ghostHead = 0
+	l.ghostCount = 0
+	l.recordSkip = 0
+	if l.entranceDuration == 0 {
+		l.entranceDuration = 0.4
+	}
+}
+
+func entranceScale(t float64) float64 {
+	if t >= 1 {
+		return 1
+	}
+	const c1 = 0.30158
+	const c3 = c1 + 1
+	return 1 + c3*math.Pow(t-1, 3) + c1*math.Pow(t-1, 2)
+}
+
+func entranceAngle(t float64) float64 {
+	if t >= 1 {
+		return 0
+	}
+	dt := 1 - t
+	return dt * dt * 2 * math.Pi
+}
+
+func exitScale(t float64) float64 {
+	if t >= 1 {
+		return 0
+	}
+	return math.Pow(1-t, 3)
+}
+
+func exitAngle(t float64) float64 {
+	if t >= 1 {
+		return 0
+	}
+	return t * t * 4 * math.Pi
+}
+
+func (l *BoxLayer) StartExit() {
+	l.exitPlaying = true
+	l.exitProgress = 0
+	if l.exitDuration == 0 {
+		l.exitDuration = 0.35
+	}
+}
+
+func (l *BoxLayer) Update(dt time.Duration) {
+	if l.exitPlaying {
+		l.exitProgress += dt.Seconds() / l.exitDuration
+		if l.exitProgress >= 1 {
+			l.exitProgress = 1
+			l.exitPlaying = false
+			l.Visible = false
+		}
+		return
+	}
+
+	if !l.Visible || !l.entrancePlaying {
+		return
+	}
+
+	l.recordSkip++
+	if l.recordSkip%2 == 0 {
+		l.ghostFrames[l.ghostHead] = GhostFrame{
+			Scale:    entranceScale(l.entranceProgress),
+			Angle:    entranceAngle(l.entranceProgress),
+			Recorded: l.entranceProgress,
+		}
+		l.ghostHead = (l.ghostHead + 1) % maxGhosts
+		if l.ghostCount < maxGhosts {
+			l.ghostCount++
+		}
+	}
+
+	l.entranceProgress += dt.Seconds() / l.entranceDuration
+	if l.entranceProgress >= 1 {
+		l.entranceProgress = 1
+		l.entrancePlaying = false
+	}
+}
+
+func (l *BoxLayer) drawTransformedBox(screen *ebiten.Image, scale, angle, alpha float64) {
+	l.ensureBoxImg()
+
+	ix, iy, iw, ih := l.Arena.ArenaInner()
+	cx, cy := ix+iw/2, iy+ih/2
+	imgCx := float64(boxImgSize) / 2
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(-imgCx, -imgCx)
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Rotate(angle)
+	op.GeoM.Translate(cx, cy)
+	if alpha < 1 {
+		op.ColorScale.ScaleAlpha(float32(alpha))
+	}
+	screen.DrawImage(l.boxImg, op)
 }
 
 func (l *BoxLayer) Draw(screen *ebiten.Image) {
+	if l.exitPlaying {
+		scale := exitScale(l.exitProgress)
+		angle := exitAngle(l.exitProgress)
+		l.drawTransformedBox(screen, scale, angle, 1.0)
+		return
+	}
+
 	if !l.Visible {
 		return
 	}
-	ix, iy, iw, ih := l.Arena.ArenaInner()
-	vector.DrawFilledRect(screen,
-		float32(ix), float32(iy), float32(iw), float32(ih),
-		color.Black, false)
 
+	if l.entrancePlaying || l.entranceProgress < 1 {
+		currScale := entranceScale(l.entranceProgress)
+		currAngle := entranceAngle(l.entranceProgress)
+
+		l.drawTransformedBox(screen, currScale, currAngle, 1.0)
+
+		count := l.ghostCount
+		if count > 0 {
+			start := (l.ghostHead - count + maxGhosts) % maxGhosts
+			for i := 0; i < count; i++ {
+				idx := (start + i) % maxGhosts
+				g := l.ghostFrames[idx]
+				age := l.entranceProgress - g.Recorded
+				if age < 0 {
+					age = 0
+				}
+				ghostAlpha := (1.0 - age) * 0.35
+				if ghostAlpha > 0 {
+					l.drawTransformedBox(screen, g.Scale, g.Angle, ghostAlpha)
+				}
+			}
+		}
+
+		return
+	}
+
+	ix, iy, iw, ih := l.Arena.ArenaInner()
+	vector.DrawFilledRect(screen, float32(ix), float32(iy), float32(iw), float32(ih),
+		color.Black, false)
 	for _, wall := range l.Arena.Walls {
 		wall.Draw(screen)
 	}

@@ -1,127 +1,15 @@
 package battle
 
 import (
-	"image/color"
-	"math/rand"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/mcbalaam/delta/internal/engine"
 	"github.com/mcbalaam/delta/internal/engine/components"
-	"github.com/mcbalaam/delta/internal/engine/queues"
 	"github.com/mcbalaam/delta/internal/render"
 	"github.com/mcbalaam/delta/internal/sound"
 )
-
-// ── Battle states ─────────────────────────────────────────────────
-
-type BattleState int
-
-const (
-	StateFirstCharSelecting  BattleState = iota // player picks action for party member 0
-	StateFirstCharExecute                       // executing party member 0's action
-	StateSecondCharSelecting                    // party member 1
-	StateSecondCharExecute
-	StateThirdCharSelecting // party member 2
-	StateThirdCharExecute
-	StateEnemyTarget // enemy dialogue + target selection
-	StateEnemyTurn   // enemy attack — arena + soul active
-)
-
-func (s BattleState) IsSelecting() bool {
-	return s == StateFirstCharSelecting || s == StateSecondCharSelecting || s == StateThirdCharSelecting
-}
-
-func (s BattleState) IsExecuting() bool {
-	return s == StateFirstCharExecute || s == StateSecondCharExecute || s == StateThirdCharExecute
-}
-
-func (s BattleState) String() string {
-	switch s {
-	case StateFirstCharSelecting:
-		return "1st Char Selecting"
-	case StateFirstCharExecute:
-		return "1st Char Execute"
-	case StateSecondCharSelecting:
-		return "2nd Char Selecting"
-	case StateSecondCharExecute:
-		return "2nd Char Execute"
-	case StateThirdCharSelecting:
-		return "3rd Char Selecting"
-	case StateThirdCharExecute:
-		return "3rd Char Execute"
-	case StateEnemyTarget:
-		return "Enemy Target"
-	case StateEnemyTurn:
-		return "Enemy Turn"
-	default:
-		return "???"
-	}
-}
-
-// selectingStateFor returns the selecting state for a given party index.
-func selectingStateFor(idx int) BattleState {
-	switch idx {
-	case 0:
-		return StateFirstCharSelecting
-	case 1:
-		return StateSecondCharSelecting
-	default:
-		return StateThirdCharSelecting
-	}
-}
-
-// executionStateFor returns the execution state for a given party index.
-func executionStateFor(idx int) BattleState {
-	switch idx {
-	case 0:
-		return StateFirstCharExecute
-	case 1:
-		return StateSecondCharExecute
-	default:
-		return StateThirdCharExecute
-	}
-}
-
-// ── Menu states ──────────────────────────────────────────────────
-
-type BattleMenuState int
-
-const (
-	MenuHidden BattleMenuState = iota
-	MenuMain
-	MenuAct
-	MenuTarget
-)
-
-// ── Button IDs ───────────────────────────────────────────────────
-
-const (
-	BtnFight = iota
-	BtnActMagic
-	BtnItem
-	BtnSpare
-	BtnDefend
-	BtnCount
-)
-
-// PillarParticle is a vertical bar spawned from card pillar tips.
-type PillarParticle struct {
-	X, Y      float64
-	Dir       float64
-	Accent    color.RGBA
-	SpawnAt   time.Time
-	CardIndex int
-}
-
-// CommittedAction records what a party member chose to do this turn.
-type CommittedAction struct {
-	ActionType   int
-	ActName      string
-	TargetIdx    int
-	IsAllyTarget bool
-}
 
 // ── Battle ───────────────────────────────────────────────────────
 
@@ -177,16 +65,38 @@ type Battle struct {
 
 	flickerAccum float64 // for opponent sprite flicker during target selection
 
-	showArena    func()
-	hideArena    func()
-	ArenaBoundsX float64
-	ArenaBoundsY float64
-	ArenaBoundsW float64
-	ArenaBoundsH float64
+	showArena      func()
+	hideArena      func()
+	startExitArena func()
+	ArenaBoundsX   float64
+	ArenaBoundsY   float64
+	ArenaBoundsW   float64
+	ArenaBoundsH   float64
 
 	SoulX        float64
 	SoulY        float64
 	SoulCollider *components.Collider
+
+	soulFlyoutPlaying  bool
+	soulFlyoutProgress float64
+	soulFlyoutDuration float64
+	soulFlyoutStartX   float64
+	soulFlyoutStartY   float64
+	soulFlyoutTargetX  float64
+	soulFlyoutTargetY  float64
+
+	boxOpenTimer     float64
+	boxOpenDuration  float64
+	boxCloseTimer    float64
+	boxCloseDuration float64
+
+	soulFlybackStartX  float64
+	soulFlybackStartY  float64
+	soulFlybackTargetX float64
+	soulFlybackTargetY float64
+
+	InvincibilityTimer    float64
+	InvincibilityDuration float64
 
 	OnTurnComplete func()
 
@@ -199,8 +109,10 @@ func (b *Battle) SetMenuSprite(s *render.AnimatedIcon) { b.MenuSprite = s }
 func (b *Battle) SetSoulSprite(s *render.AnimatedIcon) {
 	b.SoulSprite = s
 	b.SoulCollider = components.NewCollider(20, 20, 0, 0)
+	b.InvincibilityDuration = 1
 }
 func (b *Battle) SetArenaHooks(show, hide func()) { b.showArena = show; b.hideArena = hide }
+func (b *Battle) SetStartExitArena(fn func())     { b.startExitArena = fn }
 func (b *Battle) SetArenaBounds(x, y, w, h float64) {
 	b.ArenaBoundsX, b.ArenaBoundsY, b.ArenaBoundsW, b.ArenaBoundsH = x, y, w, h
 }
@@ -255,13 +167,13 @@ func (b *Battle) SetState(s BattleState) {
 	switch b.State {
 	case StateEnemyTurn:
 		b.turnAttackSeq = nil
-		if b.hideArena != nil {
-			b.hideArena()
-		}
-	case StateFirstCharExecute, StateSecondCharExecute, StateThirdCharExecute:
-		b.clearNarrativeText()
+		b.Targets = nil
 	}
 
+	b.completeStateTransition(s)
+}
+
+func (b *Battle) completeStateTransition(s BattleState) {
 	b.State = s
 	b.MenuState = MenuHidden
 
@@ -273,12 +185,18 @@ func (b *Battle) SetState(s BattleState) {
 	switch s {
 	case StateFirstCharSelecting, StateSecondCharSelecting, StateThirdCharSelecting:
 		b.enterCharSelecting(s)
-	case StateFirstCharExecute, StateSecondCharExecute, StateThirdCharExecute:
-		b.enterCharExecute(s)
+	case StateFirstCharAct, StateSecondCharAct, StateThirdCharAct:
+		b.enterCharAct(memberIndexFromActionState(s))
+	case StateFirstCharAttack, StateSecondCharAttack, StateThirdCharAttack:
+		b.enterCharAttack(memberIndexFromActionState(s))
+	case StateBoxOpen:
+		b.enterBoxOpen()
 	case StateEnemyTarget:
 		b.enterEnemyTarget()
 	case StateEnemyTurn:
 		b.enterEnemyTurn()
+	case StateBoxClose:
+		b.enterBoxClose()
 	}
 }
 
@@ -292,49 +210,47 @@ func (b *Battle) enterCharSelecting(s BattleState) {
 	}
 }
 
-func (b *Battle) enterCharExecute(s BattleState) {
-	idx := charIndexFromExecute(s)
-	action := b.CommittedActions[idx]
+func (b *Battle) enterCharAct(memberIdx int) {
+	action := b.CommittedActions[memberIdx]
 	if action == nil {
-		b.advanceFromExecute()
+		b.advanceFromAction()
 		return
 	}
-
-	member := b.Party[idx]
-	switch action.ActionType {
-	case BtnActMagic:
-		b.executeAct(member, action, func() { b.advanceFromExecute() })
-	case BtnItem:
-		b.executeItem(member, action, func() { b.advanceFromExecute() })
-	default:
-		b.advanceFromExecute()
-	}
+	member := b.Party[memberIdx]
+	b.executeAct(member, action, func() { b.advanceFromAction() })
 }
 
-func (b *Battle) advanceFromExecute() {
-	current := b.State
-	var nextIdx int
-	switch current {
-	case StateFirstCharExecute:
-		nextIdx = 1
-	case StateSecondCharExecute:
-		nextIdx = 2
-	default:
-		b.SetState(StateEnemyTarget)
-		return
-	}
+func (b *Battle) enterCharAttack(memberIdx int) {
+	b.advanceFromAction()
+}
 
-	// Move to the next party member's execute state
-	for i := nextIdx; i < len(b.Party); i++ {
-		if b.Party[i].Alive() {
-			b.SetState(executionStateFor(i))
+// advanceFromAction advances to the next executed member's action or to EnemyTarget.
+func (b *Battle) advanceFromAction() {
+	memberIdx := memberIndexFromActionState(b.State)
+
+	for i := memberIdx + 1; i < len(b.Party); i++ {
+		if !b.Party[i].Alive() {
+			continue
+		}
+		action := b.CommittedActions[i]
+		if action == nil {
+			continue
+		}
+		switch action.ActionType {
+		case BtnActMagic:
+			b.SetState(actStateFor(i))
+			return
+		case BtnFight:
+			b.SetState(attackStateFor(i))
 			return
 		}
 	}
+
 	b.SetState(StateEnemyTarget)
 }
 
-// advanceFromSelecting moves to the next selecting state or starts execution.
+// advanceFromSelecting moves to the next alive member's selecting state.
+// All members select first, then executions begin.
 func (b *Battle) advanceFromSelecting() {
 	next := b.ActiveMember + 1
 	for next < len(b.Party) {
@@ -344,13 +260,29 @@ func (b *Battle) advanceFromSelecting() {
 		}
 		next++
 	}
-	// All members have selected — start execution phase for first alive member
+
+	b.startExecutions()
+}
+
+func (b *Battle) startExecutions() {
 	for i := 0; i < len(b.Party); i++ {
-		if b.Party[i].Alive() {
-			b.SetState(executionStateFor(i))
+		if !b.Party[i].Alive() {
+			continue
+		}
+		action := b.CommittedActions[i]
+		if action == nil {
+			continue
+		}
+		switch action.ActionType {
+		case BtnActMagic:
+			b.SetState(actStateFor(i))
+			return
+		case BtnFight:
+			b.SetState(attackStateFor(i))
 			return
 		}
 	}
+
 	b.SetState(StateEnemyTarget)
 }
 
@@ -367,12 +299,8 @@ func (b *Battle) undoLastMember() {
 	}
 
 	m := b.Party[prevIdx]
-	if m != nil && m.IsDefending {
+	if m != nil {
 		m.IsDefending = false
-		if m.CharacterSprite != nil {
-			m.PlayingDefendRev = true
-			m.DefendRevFrame = m.CharacterSprite.CurrentState.CurrentFrame
-		}
 	}
 	b.CommittedActions[prevIdx] = nil
 	if b.SoundPlayer != nil {
@@ -389,37 +317,7 @@ func (b *Battle) enterEnemyTarget() {
 }
 
 func (b *Battle) enterEnemyTurn() {
-	if b.showArena != nil {
-		b.showArena()
-	}
-	if b.ArenaBoundsW > 0 && b.ArenaBoundsH > 0 {
-		b.SoulX = b.ArenaBoundsX + b.ArenaBoundsW/2
-		b.SoulY = b.ArenaBoundsY + b.ArenaBoundsH/2
-	}
-}
-
-// ── State index helpers ──────────────────────────────────────────
-
-func charIndexFromSelecting(s BattleState) int {
-	switch s {
-	case StateFirstCharSelecting:
-		return 0
-	case StateSecondCharSelecting:
-		return 1
-	default:
-		return 2
-	}
-}
-
-func charIndexFromExecute(s BattleState) int {
-	switch s {
-	case StateFirstCharExecute:
-		return 0
-	case StateSecondCharExecute:
-		return 1
-	default:
-		return 2
-	}
+	// arena already shown by BoxOpen, soul already at center
 }
 
 // ── Start turn ───────────────────────────────────────────────────
@@ -427,8 +325,6 @@ func charIndexFromExecute(s BattleState) int {
 func (b *Battle) StartTurn(turn *Turn, narrativeLines []string) {
 	for _, m := range b.Party {
 		m.IsDefending = false
-		m.PlayingDefendRev = false
-		m.DefendRevFrame = 0
 		if m.CharacterSprite != nil {
 			m.CharacterSprite.SetIconState("idle")
 			m.CharacterSprite.CurrentState.Mode = render.AnimationModeLoop
@@ -451,14 +347,17 @@ func (b *Battle) StartTurn(turn *Turn, narrativeLines []string) {
 		session.Start()
 	}
 
-	// Enter the first selecting state for the first alive member
+	if b.State == StateEnemyTurn || b.State == StateEnemyTarget {
+		b.SetState(StateBoxClose)
+		return
+	}
+
 	for i := 0; i < len(b.Party); i++ {
 		if b.Party[i].Alive() {
 			b.SetState(selectingStateFor(i))
 			return
 		}
 	}
-	// No alive members
 	b.SetState(StateEnemyTarget)
 }
 
@@ -488,125 +387,69 @@ func (b *Battle) executeItem(member *PartyMember, action *CommittedAction, onDon
 }
 
 func (b *Battle) resolveActEffect(member *PartyMember, action *CommittedAction) string {
-	if member.ActEffects != nil {
-		if ef, ok := member.ActEffects[action.ActName]; ok {
-			if ef.HealAmount > 0 || ef.StatusApply != nil {
-				target := member
-				if action.IsAllyTarget && action.TargetIdx >= 0 && action.TargetIdx < len(b.Party) {
-					target = b.Party[action.TargetIdx]
-				}
-				if ef.HealAmount > 0 {
-					target.Heal(b, ef.HealAmount)
-				}
-				if ef.StatusApply != nil {
-					target.ApplyStatus(ef.StatusApply)
-				}
-			}
-			if len(ef.DialogueLines) > 0 {
-				return ef.DialogueLines[0]
+	var actInstance Act
+
+	if action.IsAllyTarget && action.TargetIdx >= 0 && action.TargetIdx < len(b.Party) {
+		ally := b.Party[action.TargetIdx]
+		for _, a := range ally.Acts {
+			if a.Name() == action.ActName {
+				actInstance = a
+				break
 			}
 		}
 	}
 
-	if !action.IsAllyTarget && action.TargetIdx >= 0 && action.TargetIdx < len(b.Opponents) {
-		opp := b.Opponents[action.TargetIdx]
-		if opp.Reactions != nil {
-			if react, ok := opp.Reactions[action.ActName]; ok {
-				if react.MercyAmount > 0 {
-					opp.Mercy += react.MercyAmount
-				}
-				if react.StateChange != -1 {
-					opp.State = react.StateChange
-				}
-				if react.AttackDelta != 0 {
-					opp.Attack += react.AttackDelta
-				}
-				if react.StatusApply != nil {
-					opp.ApplyStatus(react.StatusApply)
-				}
-				if len(react.Dialogue) > 0 {
-					return react.Dialogue[0]
-				}
+	if actInstance == nil {
+		for _, a := range b.Party[b.ActiveMember].Acts {
+			if a.Name() == action.ActName {
+				actInstance = a
+				break
 			}
 		}
 	}
 
-	return "* " + member.Name + " used " + action.ActName + "!$f"
-}
-
-func (b *Battle) showActionNarrative(text string, onDone func()) {
-	if b.turnSession != nil {
-		b.turnSession.Destroy()
-	}
-	session := engine.NewDialogueSession(
-		b.TextEngine,
-		[]string{text},
-		engine.StyleNarrative,
-		b.SoundPlayer,
-	)
-	session.OnAllComplete = func() {
-		session.Destroy()
-		if onDone != nil {
-			onDone()
+	if actInstance != nil {
+		ctx := &ActContext{
+			Battle:       b,
+			ActiveMember: member,
+			TargetIdx:    action.TargetIdx,
+			IsAllyTarget: action.IsAllyTarget,
 		}
-	}
-	b.turnSession = session
-	session.Start()
-}
+		if action.IsAllyTarget && action.TargetIdx >= 0 && action.TargetIdx < len(b.Party) {
+			ctx.Target = b.Party[action.TargetIdx]
+		} else if action.TargetIdx >= 0 && action.TargetIdx < len(b.Opponents) {
+			ctx.Target = b.Opponents[action.TargetIdx]
+		} else {
+			ctx.Target = b.Opponents[0]
+		}
 
-// ── Dialogue box scheduling ──────────────────────────────────────
+		result := actInstance.Execute(ctx)
 
-func (b *Battle) ScheduleDialogueBox(id *interface{}) {
-	shouldShow := b.State == StateEnemyTarget && b.DialogueBoxIcon != nil
+		// Also apply reactions if there are any
+		if !action.IsAllyTarget && action.TargetIdx >= 0 && action.TargetIdx < len(b.Opponents) {
+			opp := b.Opponents[action.TargetIdx]
+			if opp.Reactions != nil {
+				if react, ok := opp.Reactions[action.ActName]; ok {
+					if react.MercyAmount > 0 {
+						opp.Mercy += react.MercyAmount
+					}
+					if react.StateChange != -1 {
+						opp.State = react.StateChange
+					}
+					if react.AttackDelta != 0 {
+						opp.Attack += react.AttackDelta
+					}
+					if react.StatusApply != nil {
+						opp.ApplyStatus(react.StatusApply)
+					}
+				}
+			}
+		}
 
-	if shouldShow && *id == nil {
-		d := &dialogueBoxDrawer{battle: b}
-		queues.DefaultQueue.ScheduleAt(d, 150)
-		*id = d
-	} else if !shouldShow && *id != nil {
-		queues.DefaultQueue.Unschedule((*id).(queues.Drawable))
-		*id = nil
-	}
-}
-
-type dialogueBoxDrawer struct {
-	battle *Battle
-}
-
-func (d *dialogueBoxDrawer) Draw(s *ebiten.Image) {
-	d.battle.drawDialogueBox(s)
-}
-
-// ── Narrative helpers ────────────────────────────────────────────
-
-func (b *Battle) clearNarrativeText() {
-	if b.turnSession != nil {
-		b.turnSession.Destroy()
-		b.turnSession = nil
-	}
-	if b.restoredText != nil {
-		b.restoredText.Destroy()
-		b.restoredText = nil
-	}
-}
-
-func (b *Battle) restoreNarrative() {
-	if len(b.narrativeLines) == 0 {
-		return
-	}
-	if b.restoredText != nil {
-		b.restoredText.Destroy()
-		b.restoredText = nil
+		return result
 	}
 
-	lastLine := b.narrativeLines[len(b.narrativeLines)-1]
-	td, _ := b.TextEngine.DisplayText(
-		engine.StyleNarrative.WithInstant(true),
-		lastLine,
-		b.SoundPlayer,
-		nil,
-	)
-	b.restoredText = td
+	return "* " + member.Name + " used " + action.ActName + "!$e"
 }
 
 func (b *Battle) commitAction(actionType int, actName string, targetIdx int, isAllyTarget bool) {
@@ -618,45 +461,6 @@ func (b *Battle) commitAction(actionType int, actName string, targetIdx int, isA
 		ActName:      actName,
 		TargetIdx:    targetIdx,
 		IsAllyTarget: isAllyTarget,
-	}
-}
-
-// ── Character animations ─────────────────────────────────────────
-
-func (b *Battle) updateCharacterAnimations(dt time.Duration) {
-	for _, m := range b.Party {
-		if m.CharacterSprite == nil {
-			continue
-		}
-		if m.PlayingDefendRev {
-			m.DefendRevFrame--
-			if m.DefendRevFrame < 0 {
-				m.PlayingDefendRev = false
-				m.CharacterSprite.SetIconState("idle")
-			} else {
-				m.CharacterSprite.SetIconState("defend")
-				m.CharacterSprite.CurrentState.CurrentFrame = m.DefendRevFrame
-			}
-		} else if m.IsDefending {
-			cs := m.CharacterSprite
-			if cs.CurrentState.Name != "defend" {
-				cs.SetIconState("defend")
-				cs.CurrentState.Mode = render.AnimationModeOnce
-			}
-			cs.Update(dt)
-		} else {
-			cs := m.CharacterSprite
-			if cs.CurrentState.Name != "idle" {
-				cs.SetIconState("idle")
-				cs.CurrentState.Mode = render.AnimationModeLoop
-			}
-			cs.Update(dt)
-		}
-	}
-	for _, o := range b.Opponents {
-		if o.CharacterSprite != nil {
-			o.CharacterSprite.Update(dt)
-		}
 	}
 }
 
@@ -681,8 +485,15 @@ func (b *Battle) Update(dt time.Duration) {
 	case b.State.IsSelecting():
 		return
 
-	case b.State.IsExecuting():
-		// narrative auto-advances via queue
+	case b.State == StateFirstCharAct || b.State == StateSecondCharAct || b.State == StateThirdCharAct:
+		return
+
+	case b.State == StateFirstCharAttack || b.State == StateSecondCharAttack || b.State == StateThirdCharAttack:
+		return
+
+	case b.State == StateBoxOpen:
+		b.updateSoulMovement(dt)
+		b.updateBoxOpen(dt)
 		return
 
 	case b.State == StateEnemyTarget:
@@ -694,165 +505,9 @@ func (b *Battle) Update(dt time.Duration) {
 		b.updateTurnWait(dt)
 		b.updateAttack(dt)
 		return
-	}
-}
 
-func (b *Battle) updateSoulMovement(dt time.Duration) {
-	soulSpeed := 200.0
-	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		b.SoulX -= soulSpeed * dt.Seconds()
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyRight) {
-		b.SoulX += soulSpeed * dt.Seconds()
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
-		b.SoulY -= soulSpeed * dt.Seconds()
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
-		b.SoulY += soulSpeed * dt.Seconds()
-	}
-	if b.ArenaBoundsW > 0 && b.ArenaBoundsH > 0 {
-		if b.SoulX < b.ArenaBoundsX {
-			b.SoulX = b.ArenaBoundsX
-		}
-		if b.SoulX > b.ArenaBoundsX+b.ArenaBoundsW {
-			b.SoulX = b.ArenaBoundsX + b.ArenaBoundsW
-		}
-		if b.SoulY < b.ArenaBoundsY {
-			b.SoulY = b.ArenaBoundsY
-		}
-		if b.SoulY > b.ArenaBoundsY+b.ArenaBoundsH {
-			b.SoulY = b.ArenaBoundsY + b.ArenaBoundsH
-		}
-	}
-	if b.SoulCollider != nil {
-		t := &components.Transform{X: b.SoulX, Y: b.SoulY, ScaleX: 2, ScaleY: 2}
-		b.SoulCollider.UpdateWorldVerts(t)
-	}
-}
-
-func (b *Battle) updateTurnWait(dt time.Duration) {
-	if b.turnWaitingForZ {
-		if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
-			b.turnWaitingForZ = false
-			cb := b.turnWaitCallback
-			b.turnWaitCallback = nil
-			if cb != nil {
-				cb()
-			}
-		}
+	case b.State == StateBoxClose:
+		b.updateBoxClose(dt)
 		return
-	}
-
-	if b.turnWaitingForTimer {
-		b.turnTimerElapsed += dt
-		if b.turnTimerElapsed >= b.turnTimerTarget {
-			b.turnWaitingForTimer = false
-			cb := b.turnWaitCallback
-			b.turnWaitCallback = nil
-			if cb != nil {
-				cb()
-			}
-		}
-		return
-	}
-}
-
-func (b *Battle) updateAttack(dt time.Duration) {
-	if b.turnAttackSeq == nil {
-		return
-	}
-
-	b.turnAttackSeq.Update(dt)
-	b.turnAttackElapsed += dt
-
-	if b.SoulCollider != nil && len(b.Targets) > 0 {
-		alive := b.turnAttackSeq.ActiveProjectiles[:0]
-		for _, p := range b.turnAttackSeq.ActiveProjectiles {
-			if p.Collider != nil && p.Transform != nil && b.SoulCollider.CollidesWith(p.Collider) {
-				for _, tIdx := range b.Targets {
-					if tIdx >= 0 && tIdx < len(b.Party) && b.Party[tIdx].Alive() {
-						b.Party[tIdx].TakeDamage(b, p.Damage)
-						break
-					}
-				}
-				b.retargetNext()
-				queues.QDel(p)
-				continue
-			}
-			alive = append(alive, p)
-		}
-		b.turnAttackSeq.ActiveProjectiles = alive
-	}
-
-	if b.turnAttackElapsed >= b.turnAttackDuration {
-		b.turnAttackSeq = nil
-		cb := b.turnAttackDone
-		b.turnAttackDone = nil
-		if cb != nil {
-			cb()
-		}
-	}
-}
-
-// ── Target selection ─────────────────────────────────────────────
-
-func (b *Battle) selectTargets() {
-	var alive []int
-	for i, m := range b.Party {
-		if m.Alive() {
-			alive = append(alive, i)
-		}
-	}
-
-	b.Targets = nil
-	if len(alive) == 0 {
-		return
-	}
-
-	numTargets := 2
-	if len(alive) < 2 {
-		numTargets = len(alive)
-	} else {
-		maxExtra := len(alive) - 2
-		if maxExtra > 1 {
-			maxExtra = 1
-		}
-		numTargets = 2 + rand.Intn(maxExtra+1)
-	}
-
-	rand.Shuffle(len(alive), func(i, j int) {
-		alive[i], alive[j] = alive[j], alive[i]
-	})
-
-	b.Targets = make([]int, numTargets)
-	copy(b.Targets, alive[:numTargets])
-}
-
-func (b *Battle) retargetNext() {
-	if len(b.Targets) == 0 {
-		return
-	}
-
-	for i, tIdx := range b.Targets {
-		if tIdx >= 0 && tIdx < len(b.Party) && b.Party[tIdx].Alive() {
-			continue
-		}
-		for j, m := range b.Party {
-			if !m.Alive() {
-				continue
-			}
-			already := false
-			for _, t := range b.Targets {
-				if t == j {
-					already = true
-					break
-				}
-			}
-			if !already {
-				b.Targets[i] = j
-				break
-			}
-		}
 	}
 }

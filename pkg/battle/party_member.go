@@ -17,21 +17,16 @@ const (
 // PartyMember is a character on the player's side.
 type PartyMember struct {
 	Name   string
-	Sprite string // path for AnimatedIcon: "media/sprites/<name>"
-	Voice  string // sound name for dialogue SFX
 
 	// ── Battle UI ──
 	AccentColor      color.Color          // colors the member's card border
 	BattleMiniature  *render.AnimatedIcon // character icon on the battle card
 	CharacterSprite  *render.AnimatedIcon // character portrait with animations
-	PlayingDefendRev bool                 // playing defend animation in reverse
-	DefendRevFrame   int                  // current reverse frame index
 
 	MaxHP   float64
 	HP      float64
 	Attack  float64
 	Defense float64
-	Lv      int // optional, for damage formula scaling
 
 	State MemberState
 
@@ -39,26 +34,16 @@ type PartyMember struct {
 	IsDefending bool // set when this member uses DEFEND; resets each turn
 
 	// Unique ACTs this party member can perform.
-	Acts []ActDef
-	// ActEffects maps an ACT name → the result when this member uses it.
-	// The battle system resolves the effect (heal, shield, etc.) using this data.
-	ActEffects map[string]ActEffect
+	Acts []Act
 
 	Statuses []StatusEffect
 
 	// ── Callbacks ──────────────────────────────────────────
 
-	// OnTurnSubmit runs when the player confirms this member's action for the turn.
 	OnTurnSubmit func(battleCtx interface{})
-
-	// OnHit runs when this member takes damage.
-	OnHit func(battleCtx interface{}, damage float64)
-
-	// OnHeal runs when this member is healed.
-	OnHeal func(battleCtx interface{}, amount float64)
-
-	// OnDown runs when HP reaches 0.
-	OnDown func(battleCtx interface{})
+	OnHit        func(battleCtx interface{}, damage float64)
+	OnHeal       func(battleCtx interface{}, amount float64)
+	OnDown       func(battleCtx interface{})
 }
 
 // GetDialogue returns the member's name for dialogue positioning.
@@ -74,7 +59,7 @@ func (pm *PartyMember) Alive() bool {
 // TakeDamage reduces HP by damage (after defense), triggers OnHit, and checks for down.
 func (pm *PartyMember) TakeDamage(battleCtx interface{}, rawDamage float64) float64 {
 	_, def, _ := pm.EffectiveStats()
-	damage := rawDamage / def
+	damage := rawDamage / (1 + def*0.1)
 	if damage < 1 {
 		damage = 1
 	}
@@ -144,12 +129,4 @@ func (pm *PartyMember) EffectiveStats() (attack, defense, mercyMult float64) {
 		mercyMult *= s.Modifier.MercyMod
 	}
 	return
-}
-
-// ActEffect defines what happens when this party member uses a specific ACT.
-type ActEffect struct {
-	HealAmount    float64       // HP restored
-	StatusApply   *StatusEffect // status to apply to target (or self)
-	TargetAlly    bool          // true = affects self/ally, false = affects opponent
-	DialogueLines []string      // flavour text shown when used
 }

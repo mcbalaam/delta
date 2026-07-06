@@ -10,7 +10,7 @@ const (
 
 // ActEntry is a single entry in the combined ACT menu.
 type ActEntry struct {
-	Def     ActDef
+	Def     Act
 	Source  ActSource
 	Emitter interface{} // *PartyMember or *Opponent — origin for effect lookup
 }
@@ -27,12 +27,12 @@ func CollectActs(activeMember *PartyMember, targetOpponent *Opponent) []ActEntry
 	seen := make(map[string]ActEntry)
 	var order []string // preserve insertion order
 
-	add := func(source ActSource, emitter interface{}, defs []ActDef) {
-		for _, a := range defs {
-			if _, exists := seen[a.Name]; !exists {
-				order = append(order, a.Name)
+	add := func(source ActSource, emitter interface{}, acts []Act) {
+		for _, a := range acts {
+			if _, exists := seen[a.Name()]; !exists {
+				order = append(order, a.Name())
 			}
-			seen[a.Name] = ActEntry{Def: a, Source: source, Emitter: emitter}
+			seen[a.Name()] = ActEntry{Def: a, Source: source, Emitter: emitter}
 		}
 	}
 

@@ -100,7 +100,7 @@ func (e *AttackEvent) Run(b *Battle, onDone func()) {
 	b.turnAttackElapsed = 0
 	b.turnAttackDone = onDone
 
-	b.SetState(StateEnemyTurn)
+	b.SetState(StateBoxOpen)
 }
 
 // Turn is the script for everything that happens after the player confirms actions.

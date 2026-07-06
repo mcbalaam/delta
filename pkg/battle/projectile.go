@@ -10,6 +10,40 @@ import (
 	"github.com/mcbalaam/delta/internal/render"
 )
 
+// TrailParticle is a non-damaging visual trail left behind projectiles.
+type TrailParticle struct {
+	X        float64
+	Y        float64
+	ScaleX   float64
+	ScaleY   float64
+	Icon     *render.AnimatedIcon
+	Elapsed  time.Duration
+	Lifetime time.Duration
+}
+
+func (tp *TrailParticle) Update(dt time.Duration) {
+	tp.Elapsed += dt
+	if tp.Elapsed >= tp.Lifetime {
+		queues.QDel(tp)
+	}
+}
+
+func (tp *TrailParticle) Draw(s *ebiten.Image) {
+	if tp.Icon == nil {
+		return
+	}
+	alpha := 1.0 - tp.Elapsed.Seconds()/tp.Lifetime.Seconds()
+	if alpha < 0 {
+		alpha = 0
+	}
+	tp.Icon.DrawWithColorScale(s, tp.X, tp.Y, tp.ScaleX, tp.ScaleY, 0, 1, 1, 1, alpha)
+}
+
+func (tp *TrailParticle) Destroy() {
+	queues.DefaultQueue.Unschedule(tp)
+	queues.DefaultUpdateQueue.Unschedule(tp)
+}
+
 type Projectile struct {
 	engine.Entity
 

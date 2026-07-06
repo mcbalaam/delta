@@ -85,12 +85,17 @@ func (g *Game) setupTestBattle() {
 	queues.DefaultQueue.ScheduleAt(spriteLayer, queues.LayerArena)
 	queues.DefaultQueue.ScheduleAt(boxLayer, queues.LayerArena)
 	queues.DefaultUpdateQueue.Schedule(spriteLayer)
+	queues.DefaultUpdateQueue.Schedule(boxLayer)
 
 	showArena := func() {
 		boxLayer.Visible = true
+		boxLayer.StartEntrance()
 	}
 	hideArena := func() {
 		boxLayer.Visible = false
+	}
+	startExitArena := func() {
+		boxLayer.StartExit()
 	}
 
 	kris := &battle.PartyMember{
@@ -101,9 +106,31 @@ func (g *Game) setupTestBattle() {
 		Attack:      10,
 		Defense:     10,
 		IsLeader:    true,
-		Acts: []battle.ActDef{
-			{Name: "Threaten", Description: "Scare the opponent"},
-			{Name: "Hypnosis", Description: "Put opponent to sleep"},
+		Acts: []battle.Act{
+			battle.NewSimpleAct("Threaten", "Scare the opponent",
+				"* You raise your fists menacingly. Rudinn backs away.$e",
+				func(ctx interface{}) string {
+					c := ctx.(*battle.ActContext)
+					if t := c.TargetOpponent(); t != nil {
+						t.Mercy += 10
+						t.State = battle.StateFlustered
+						return t.Name + " cowers in fear!$e"
+					}
+					return ""
+				}),
+			battle.NewSimpleAct("Hypnosis", "Put opponent to sleep",
+				"* A swirl of colorful lights captures Rudinn's attention.$f",
+				func(ctx interface{}) string {
+					c := ctx.(*battle.ActContext)
+					if t := c.TargetOpponent(); t != nil {
+						t.ApplyStatus(&battle.StatusEffect{
+							Name: "Sleep", Duration: 3,
+							Modifier: battle.StatusMod{AttackMod: 0.5, DefenseMod: 0.5, MercyMod: 1.0},
+						})
+						return t.Name + " feels drowsy...$e"
+					}
+					return ""
+				}),
 		},
 		BattleMiniature: krisIcon,
 	}
@@ -121,9 +148,19 @@ func (g *Game) setupTestBattle() {
 		Attack:      15,
 		Defense:     8,
 		IsLeader:    false,
-		Acts: []battle.ActDef{
-			{Name: "Rude Buster", Description: "Deal heavy damage"},
-			{Name: "Intimidate", Description: "Lower opponent defense"},
+		Acts: []battle.Act{
+			battle.NewSimpleAct("Rude Buster", "Deal heavy damage",
+				"* Susie charges up and unleashes a powerful blow!$e",
+				func(ctx interface{}) string {
+					c := ctx.(*battle.ActContext)
+					if t := c.TargetOpponent(); t != nil {
+						t.HP -= 50
+						return "Rudinn takes 50 damage!$e"
+					}
+					return ""
+				}),
+			battle.NewAttackDeltaAct("Intimidate", "Lower opponent defense",
+				"* You loom over Rudinn. His confidence wavers.$f", -5, false),
 		},
 		BattleMiniature: susieIcon,
 	}
@@ -136,9 +173,19 @@ func (g *Game) setupTestBattle() {
 		Attack:      5,
 		Defense:     15,
 		IsLeader:    false,
-		Acts: []battle.ActDef{
-			{Name: "Heal Prayer", Description: "Restore HP", TargetSelf: true},
-			{Name: "Pacify", Description: "Calm the opponent"},
+		Acts: []battle.Act{
+			battle.NewHealAct("Heal Prayer", "Restore HP",
+				"* The shrine glows warmly. Kris heals!$f", 25, true),
+			battle.NewSimpleAct("Pacify", "Calm the opponent",
+				"* You gently soothe the opponent. They seem more at peace.$f",
+				func(ctx interface{}) string {
+					c := ctx.(*battle.ActContext)
+					if t := c.TargetOpponent(); t != nil {
+						t.Mercy += 30
+						return t.Name + " seems more calm.$e"
+					}
+					return ""
+				}),
 		},
 		BattleMiniature: ralseiIcon,
 	}
@@ -151,9 +198,11 @@ func (g *Game) setupTestBattle() {
 		Defense:  8,
 		MaxMercy: 100,
 		Mercy:    0,
-		Acts: []battle.ActDef{
-			{Name: "Talk", Description: "Try to reason with Rudinn"},
-			{Name: "Compliment", Description: "Flatter Rudinn"},
+		Acts: []battle.Act{
+			battle.NewRaiseMercyAct("Talk", "Try to reason with Rudinn",
+				"* You try to reason with Rudinn. He listens...$f", 20),
+			battle.NewRaiseMercyAct("Compliment", "Flatter Rudinn",
+				"* You give a sincere compliment. Rudinn smiles warmly.$f", 30),
 		},
 		Reactions: map[string]battle.ActReaction{
 			"Talk":       {StateChange: battle.StateTired, MercyAmount: 20},
@@ -166,7 +215,9 @@ func (g *Game) setupTestBattle() {
 		log.Printf("rudinn char sprite: %v", err)
 	}
 
-	gameScene := &GameScene{}
+	gameScene := &GameScene{
+		fade: NewScreenFade(),
+	}
 	gameScene.Battle = &battle.Battle{
 		TextEngine:   g.textEngine,
 		SoundPlayer:  g.soundPlayer,
@@ -196,8 +247,8 @@ func (g *Game) setupTestBattle() {
 					Lines:   []string{"Here I come!$e"},
 				},
 				&battle.AttackEvent{
-					Duration: 5 * time.Second,
-					Sequence: battle.NewBasicAttack(projIcon, 5, 5*time.Second, 25),
+					Duration: 6 * time.Second,
+					Sequence: battle.NewHomingAttack(projIcon, 10, 500*time.Millisecond, 250, 20, 3*time.Second),
 				},
 			},
 		}
@@ -230,6 +281,7 @@ func (g *Game) setupTestBattle() {
 		log.Printf("slash icon: %v", err)
 	}
 	gameScene.Battle.SetArenaHooks(showArena, hideArena)
+	gameScene.Battle.SetStartExitArena(startExitArena)
 	gameScene.Battle.SetArenaBounds(sa.ArenaInner())
 
 	firstTurnTurn := &battle.Turn{
@@ -239,8 +291,8 @@ func (g *Game) setupTestBattle() {
 				Lines:   []string{"Don't come $nany closer!$e"},
 			},
 			&battle.AttackEvent{
-				Duration: 5 * time.Second,
-				Sequence: battle.NewBasicAttack(projIcon, 5, 5*time.Second, 25),
+				Duration: 6 * time.Second,
+				Sequence: battle.NewHomingAttack(projIcon, 10, 500*time.Millisecond, 250, 20, 3*time.Second),
 			},
 		},
 	}
